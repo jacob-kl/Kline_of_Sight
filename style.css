@@ -420,6 +420,39 @@ body {
   object-fit: cover;
 }
 
+/* Multi-photo thumbnail grid */
+.dz-multi-grid {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  max-width: 280px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.dz-multi-thumb {
+  width: 54px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 10px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .15);
+}
+
+.dz-multi-more {
+  width: 54px;
+  height: 54px;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .drop-zone .dz-icon  { font-size: 36px; margin-bottom: 8px; }
 
 .drop-zone .dz-main {
