@@ -98,12 +98,38 @@ function handleFabClick() {
 }
 
 // ─────────────────────────────────────────────────────────
-// MAP
+// MAP  —  three tile styles, custom switcher
 // ─────────────────────────────────────────────────────────
 const map = L.map('map', { center: [40, -96], zoom: 3, zoomControl: false });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  { attribution: 'OpenStreetMap, CartoDB', maxZoom: 19, subdomains: 'abcd' }).addTo(map);
+
+var tileSets = {
+  streets: L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    { attribution: '©OpenStreetMap ©CartoDB', maxZoom: 19, subdomains: 'abcd' }
+  ),
+  topo: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    { attribution: '©Esri, DeLorme, NAVTEQ, TomTom, NPS', maxZoom: 19 }
+  ),
+  satellite: L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: '©Esri, Earthstar Geographics', maxZoom: 19 }
+  )
+};
+
+var activeStyle = 'topo';
+tileSets[activeStyle].addTo(map);
+
+function setMapStyle(style) {
+  if (style === activeStyle) return;
+  map.removeLayer(tileSets[activeStyle]);
+  tileSets[style].addTo(map);
+  activeStyle = style;
+  document.querySelectorAll('.ms-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.style === style);
+  });
+}
 
 const clusterGroup = L.markerClusterGroup({
   maxClusterRadius: 70,
@@ -210,6 +236,7 @@ function toggleFilter(uid) {
 function startConnectionsListener() {
   if (!currentUser) return;
 
+  // Watch connections in real-time — restarts location listener whenever they change
   db.collection('connections')
     .where('uids', 'array-contains', currentUser.uid)
     .onSnapshot(function(snap) {
@@ -217,28 +244,55 @@ function startConnectionsListener() {
         return doc.data().uids.find(function(uid) { return uid !== currentUser.uid; });
       }).filter(Boolean);
 
-      // Restart location listener with updated UID list
-      if (locationListener) { locationListener(); locationListener = null; }
-
-      var allUIDs = [currentUser.uid].concat(connectedUIDs);
-      locationListener = db.collection('locations')
-        .where('ownedBy', 'in', allUIDs)
-        .onSnapshot(function(locSnap) {
-          locations = locSnap.docs.map(function(doc) {
-            return Object.assign({ id: doc.id }, doc.data());
-          });
-          locations.sort(function(a, b) {
-            var ta = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-            var tb = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-            return ta - tb;
-          });
-          renderFilter(); renderMarkers();
-        }, function(err) {
-          console.error('Location listener error:', err);
-          toast('Trouble loading photos. Check your config.js.');
-        });
-
+      startLocationListener();
       renderConnectionsList();
+    }, function(err) {
+      console.error('Connections listener error:', err);
+      // Even if connections fail, still try to load our own photos
+      startLocationListener();
+    });
+}
+
+function startLocationListener() {
+  if (locationListener) { locationListener(); locationListener = null; }
+  if (!currentUser) return;
+
+  // Fetch ALL locations the rules allow us to see, then filter client-side.
+  // This also catches old documents that used familyId instead of ownedBy.
+  locationListener = db.collection('locations')
+    .onSnapshot(function(snap) {
+      var all = snap.docs.map(function(doc) {
+        return Object.assign({ id: doc.id }, doc.data());
+      });
+
+      // Show: my photos + connected people's photos + old-format docs (no ownedBy)
+      locations = all.filter(function(loc) {
+        if (!loc.ownedBy)                              return true; // old format — show all
+        if (loc.ownedBy === currentUser.uid)           return true; // my photos
+        if (connectedUIDs.indexOf(loc.ownedBy) !== -1) return true; // connected person's photos
+        return false;
+      });
+
+      locations.sort(function(a, b) {
+        var ta = a.createdAt && a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+        var tb = b.createdAt && b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+        return ta - tb;
+      });
+
+      renderFilter();
+      renderMarkers();
+
+      // Auto-migrate any old documents that are missing ownedBy
+      all.forEach(function(loc) {
+        if (!loc.ownedBy) {
+          db.collection('locations').doc(loc.id)
+            .update({ ownedBy: currentUser.uid })
+            .catch(function() {});
+        }
+      });
+    }, function(err) {
+      console.error('Location listener error:', err);
+      toast('Trouble loading photos — check your Firestore rules in the README.');
     });
 }
 
