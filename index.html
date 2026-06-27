@@ -83,7 +83,24 @@
           <div class="lo-name">Drop a pin</div>
           <div class="lo-sub">Tap on the map</div>
         </div>
+        <div class="loc-opt loc-opt-full" id="opt-search" onclick="selectSearch()">
+          <div class="lo-icon">🔍</div>
+          <div class="lo-name">Search a place</div>
+          <div class="lo-sub">Type any name or address</div>
+        </div>
       </div>
+
+      <!-- Search panel — shown when Search option is active -->
+      <div id="search-panel">
+        <div class="search-input-wrap">
+          <input type="text" id="search-input" class="search-field"
+                 placeholder="e.g. Yellowstone, Eiffel Tower, Tokyo…"
+                 oninput="onSearchInput()" autocomplete="off"/>
+          <button class="search-clear-btn" onclick="clearSearch()" title="Clear">×</button>
+        </div>
+        <div id="search-results" class="search-results"></div>
+      </div>
+
       <div class="loc-status" id="loc-status"></div>
 
       <button class="btn-add" id="add-btn" disabled onclick="savePhoto()">
