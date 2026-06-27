@@ -13,14 +13,13 @@ let currentUser   = null;
 let pendingUpload = false;
 let locations     = [];
 
-// Filter: which uploaders are selected (empty Set = show all)
-let selectedUids  = new Set();
-let allUploaders  = new Map(); // uid -> { uid, displayName, photoURL }
+let selectedUids = new Set();
+let allUploaders = new Map();
 
 let pendingLat    = null;
 let pendingLng    = null;
-let selectedFile  = null;
-let selectedURL   = null;
+let selectedFiles = [];   // array — supports multiple photos
+let selectedURLs  = [];   // local previews, one per file
 let pinMode       = false;
 let tempPinMarker = null;
 
@@ -39,9 +38,7 @@ auth.onAuthStateChanged(function(user) {
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithPopup(provider).catch(function(err) {
-    if (err.code !== 'auth/popup-closed-by-user') {
-      toast('Sign-in failed. Please try again.');
-    }
+    if (err.code !== 'auth/popup-closed-by-user') toast('Sign-in failed. Please try again.');
     pendingUpload = false;
   });
 }
@@ -83,7 +80,7 @@ function handleFabClick() {
 }
 
 // ─────────────────────────────────────────────────────────
-// MAP
+// MAP  —  CartoDB Voyager tiles for a warmer, richer look
 // ─────────────────────────────────────────────────────────
 const map = L.map('map', {
   center: [25, 10],
@@ -94,33 +91,32 @@ const map = L.map('map', {
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
 L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-  { attribution: 'OpenStreetMap, CartoDB', maxZoom: 19 }
+  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+  {
+    attribution: 'OpenStreetMap, CartoDB',
+    maxZoom: 19,
+    subdomains: 'abcd'
+  }
 ).addTo(map);
 
 const clusterGroup = L.markerClusterGroup({
   maxClusterRadius: 70,
   showCoverageOnHover: false,
   iconCreateFunction: function(c) {
-    var kids   = c.getAllChildMarkers();
+    var kids = c.getAllChildMarkers();
     var photos = [];
     kids.forEach(function(k) {
-      if (k.options.loc && k.options.loc.photos) {
-        photos = photos.concat(k.options.loc.photos);
-      }
+      if (k.options.loc && k.options.loc.photos) photos = photos.concat(k.options.loc.photos);
     });
-    var count = photos.length;
     var p1 = photos[0] ? photos[0].url : '';
     var p2 = photos[1] ? photos[1].url : p1;
     return L.divIcon({
       html: '<div class="pm-stack">' +
             '<div class="pm-back"><img src="' + p1 + '" onerror="this.style.visibility=\'hidden\'"/></div>' +
             '<div class="pm-front"><img src="' + p2 + '" onerror="this.style.visibility=\'hidden\'"/></div>' +
-            '<div class="pm-count">' + count + ' photos</div>' +
+            '<div class="pm-count">' + photos.length + ' photos</div>' +
             '</div>',
-      className: '',
-      iconSize: [64, 54],
-      iconAnchor: [32, 27]
+      className: '', iconSize: [64, 54], iconAnchor: [32, 27]
     });
   }
 });
@@ -143,14 +139,11 @@ function buildIcon(loc) {
 // ─────────────────────────────────────────────────────────
 // FILTER HELPERS
 // ─────────────────────────────────────────────────────────
-
-// Returns true if this photo should be shown given the current filter
 function photoPassesFilter(photo) {
   if (selectedUids.size === 0) return true;
   return selectedUids.has(photo.uploadedBy);
 }
 
-// Returns the filtered photos for a location
 function getFilteredPhotos(loc) {
   if (!loc.photos) return [];
   if (selectedUids.size === 0) return loc.photos;
@@ -158,16 +151,14 @@ function getFilteredPhotos(loc) {
 }
 
 // ─────────────────────────────────────────────────────────
-// RENDER MARKERS (respects active filter)
+// RENDER MARKERS
 // ─────────────────────────────────────────────────────────
 function renderMarkers() {
   clusterGroup.clearLayers();
   locations.forEach(function(loc) {
-    var visiblePhotos = getFilteredPhotos(loc);
-    if (!visiblePhotos.length) return;
-
-    // Build a filtered copy of the location for the icon + viewer
-    var filteredLoc = Object.assign({}, loc, { photos: visiblePhotos });
+    var visible = getFilteredPhotos(loc);
+    if (!visible.length) return;
+    var filteredLoc = Object.assign({}, loc, { photos: visible });
     var m = L.marker([loc.lat, loc.lng], { icon: buildIcon(filteredLoc), loc: filteredLoc });
     m.on('click', function() { openViewer(filteredLoc); });
     clusterGroup.addLayer(m);
@@ -178,8 +169,6 @@ function renderMarkers() {
 // ─────────────────────────────────────────────────────────
 // UPLOADER FILTER UI
 // ─────────────────────────────────────────────────────────
-
-// Collect every unique uploader across all locations
 function buildUploaderMap() {
   var uploaders = new Map();
   locations.forEach(function(loc) {
@@ -200,7 +189,6 @@ function renderFilter() {
   allUploaders = buildUploaderMap();
   var row = document.getElementById('filter-row');
 
-  // Hide the row if there's only one uploader — nothing to filter
   if (allUploaders.size < 2) {
     row.style.display = 'none';
     return;
@@ -212,40 +200,28 @@ function renderFilter() {
   allUploaders.forEach(function(uploader, uid) {
     var isActive = selectedUids.size === 0 || selectedUids.has(uid);
     var btn = document.createElement('button');
-    btn.className   = 'filter-btn' + (isActive ? '' : ' inactive');
-    btn.title       = uploader.displayName;
-    btn.setAttribute('data-name', uploader.displayName.split(' ')[0]); // first name in tooltip
-    btn.onclick     = function() { toggleFilter(uid); };
+    btn.className = 'filter-btn' + (isActive ? '' : ' inactive');
+    btn.title     = uploader.displayName;
+    btn.setAttribute('data-name', uploader.displayName.split(' ')[0]);
+    btn.onclick   = function() { toggleFilter(uid); };
 
     if (uploader.photoURL) {
       btn.innerHTML = '<img src="' + uploader.photoURL + '" alt="' + uploader.displayName + '"/>';
     } else {
-      var initial = (uploader.displayName[0] || '?').toUpperCase();
-      btn.innerHTML = '<div class="filter-initial">' + initial + '</div>';
+      btn.innerHTML = '<div class="filter-initial">' + (uploader.displayName[0] || '?').toUpperCase() + '</div>';
     }
-
     row.appendChild(btn);
   });
 }
 
 function toggleFilter(uid) {
   if (selectedUids.size === 0) {
-    // Currently showing everyone → isolate this one person
     selectedUids = new Set([uid]);
   } else if (selectedUids.has(uid)) {
-    // Deselect this person
     selectedUids.delete(uid);
-    // If nobody is selected anymore, reset to show all
-    if (selectedUids.size === 0) {
-      selectedUids = new Set();
-    }
   } else {
-    // Add this person to the selection
     selectedUids.add(uid);
-    // If everyone is now selected, clean up by resetting to "show all"
-    if (selectedUids.size === allUploaders.size) {
-      selectedUids = new Set();
-    }
+    if (selectedUids.size === allUploaders.size) selectedUids = new Set();
   }
   renderFilter();
   renderMarkers();
@@ -260,8 +236,8 @@ db.collection('locations')
     locations = snapshot.docs.map(function(doc) {
       return Object.assign({ id: doc.id }, doc.data());
     });
-    renderFilter();   // rebuild the uploader filter pills
-    renderMarkers();  // redraw the map
+    renderFilter();
+    renderMarkers();
   }, function(err) {
     console.error('Firestore error:', err);
     toast('Trouble connecting. Check your config.js values.');
@@ -281,14 +257,12 @@ function uploaderBadgeHTML(photo) {
 
 function openViewer(loc) {
   if (pinMode) return;
-
   document.getElementById('vwr-location').textContent = loc.name;
   document.getElementById('vwr-title').textContent =
     loc.photos.length + ' photo' + (loc.photos.length !== 1 ? 's' : '');
 
   var grid = document.getElementById('vwr-grid');
   grid.innerHTML = '';
-
   loc.photos.forEach(function(ph) {
     var el = document.createElement('div');
     el.className = 'photo-grid-item';
@@ -299,14 +273,12 @@ function openViewer(loc) {
     el.onclick = function() { openLightbox(ph.url, ph.caption, ph.uploaderName); };
     grid.appendChild(el);
   });
-
   document.getElementById('viewer-overlay').classList.add('open');
 }
 
 function maybeCloseViewer(e) {
-  if (e.target === document.getElementById('viewer-overlay')) {
+  if (e.target === document.getElementById('viewer-overlay'))
     document.getElementById('viewer-overlay').classList.remove('open');
-  }
 }
 
 // ─────────────────────────────────────────────────────────
@@ -325,13 +297,14 @@ function maybeCloseUpload(e) {
 }
 
 function resetUpload() {
-  selectedFile = null;
-  selectedURL  = null;
-  pendingLat   = null;
-  pendingLng   = null;
+  selectedFiles = [];
+  selectedURLs  = [];
+  pendingLat    = null;
+  pendingLng    = null;
 
   document.getElementById('file-input').value    = '';
   document.getElementById('caption').value       = '';
+  document.getElementById('caption').placeholder = 'Add a caption… (optional)';
   document.getElementById('opt-gps').classList.remove('active');
   document.getElementById('opt-pin').classList.remove('active');
   document.getElementById('add-btn').disabled    = true;
@@ -343,34 +316,65 @@ function resetUpload() {
 
   document.getElementById('dz-content').innerHTML =
     '<div class="dz-icon">📷</div>' +
-    '<div class="dz-main">Choose a photo</div>' +
-    '<div class="dz-sub">Tap here or drag and drop</div>';
+    '<div class="dz-main">Choose photos</div>' +
+    '<div class="dz-sub">Tap here • select one or many</div>';
   document.getElementById('drop-zone').classList.remove('has-file');
 
   if (tempPinMarker) { map.removeLayer(tempPinMarker); tempPinMarker = null; }
 }
 
 // ─────────────────────────────────────────────────────────
-// UPLOAD — file selection + drag and drop
+// UPLOAD — file selection (supports multiple)
 // ─────────────────────────────────────────────────────────
 function handleFile(e) {
-  var file = e.target.files[0];
-  if (!file) return;
-  selectedFile = file;
+  var files = Array.from(e.target ? e.target.files : e);
+  if (!files.length) return;
+  selectedFiles = files;
+  selectedURLs  = new Array(files.length);
 
-  var reader = new FileReader();
-  reader.onload = function(ev) {
-    selectedURL = ev.target.result;
-    document.getElementById('dz-content').innerHTML =
-      '<div class="dz-preview"><img src="' + selectedURL + '"/></div>' +
-      '<div class="dz-main" style="color:#0f172a">' + file.name + '</div>' +
-      '<div class="dz-change">Tap to change</div>';
-    document.getElementById('drop-zone').classList.add('has-file');
-    checkReady();
-  };
-  reader.readAsDataURL(file);
+  // Read all files as data URLs for local preview
+  var pending = files.length;
+  files.forEach(function(file, i) {
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      selectedURLs[i] = ev.target.result;
+      pending--;
+      if (pending === 0) updateDropZonePreview();
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
+function updateDropZonePreview() {
+  var n = selectedFiles.length;
+  document.getElementById('drop-zone').classList.add('has-file');
+
+  if (n === 1) {
+    document.getElementById('dz-content').innerHTML =
+      '<div class="dz-preview"><img src="' + selectedURLs[0] + '"/></div>' +
+      '<div class="dz-main" style="color:#0f172a">' + selectedFiles[0].name + '</div>' +
+      '<div class="dz-change">Tap to change</div>';
+    document.getElementById('caption').placeholder = 'Add a caption… (optional)';
+  } else {
+    // Show up to 5 thumbnails, then a "+N more" tile
+    var max      = Math.min(n, 5);
+    var thumbs   = '';
+    for (var i = 0; i < max; i++) {
+      thumbs += '<img src="' + selectedURLs[i] + '" class="dz-multi-thumb"/>';
+    }
+    if (n > 5) {
+      thumbs += '<div class="dz-multi-more">+' + (n - 5) + '</div>';
+    }
+    document.getElementById('dz-content').innerHTML =
+      '<div class="dz-multi-grid">' + thumbs + '</div>' +
+      '<div class="dz-main" style="color:#0f172a">' + n + ' photos selected</div>' +
+      '<div class="dz-change">Tap to change</div>';
+    document.getElementById('caption').placeholder = 'Add a caption… (applies to all)';
+  }
+  checkReady();
+}
+
+// Drag and drop
 var dropZone = document.getElementById('drop-zone');
 dropZone.addEventListener('dragover', function(e) {
   e.preventDefault(); dropZone.style.borderColor = '#f59e0b';
@@ -380,8 +384,10 @@ dropZone.addEventListener('dragleave', function() {
 });
 dropZone.addEventListener('drop', function(e) {
   e.preventDefault(); dropZone.style.borderColor = '';
-  var file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) handleFile({ target: { files: [file] } });
+  var files = Array.from(e.dataTransfer.files).filter(function(f) {
+    return f.type.startsWith('image/');
+  });
+  if (files.length) handleFile(files);
 });
 
 // ─────────────────────────────────────────────────────────
@@ -395,7 +401,6 @@ function useGPS() {
   if (!navigator.geolocation) {
     showStatus('GPS not available in this browser.', true); return;
   }
-
   navigator.geolocation.getCurrentPosition(
     function(pos) {
       pendingLat = pos.coords.latitude;
@@ -463,7 +468,11 @@ function showStatus(msg, warn) {
 }
 
 function checkReady() {
-  document.getElementById('add-btn').disabled = !(selectedFile && pendingLat !== null);
+  var n      = selectedFiles.length;
+  var ready  = n > 0 && pendingLat !== null;
+  var addBtn = document.getElementById('add-btn');
+  addBtn.disabled    = !ready;
+  addBtn.textContent = (ready && n > 1) ? 'Add ' + n + ' Photos to Map' : 'Add to Map';
 }
 
 // ─────────────────────────────────────────────────────────
@@ -479,25 +488,35 @@ async function uploadToCloudinary(file) {
     'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD_NAME + '/image/upload',
     { method: 'POST', body: form }
   );
-  if (!res.ok) throw new Error('Cloudinary upload failed: ' + res.status);
+  if (!res.ok) throw new Error('Cloudinary error: ' + res.status);
   var data = await res.json();
   return data.secure_url;
 }
 
 // ─────────────────────────────────────────────────────────
-// SAVE PHOTO — Cloudinary + Firestore
+// SAVE PHOTOS — uploads all selected files, then writes to Firestore
 // ─────────────────────────────────────────────────────────
 async function savePhoto() {
-  if (!selectedFile || pendingLat === null || !currentUser) return;
+  if (!selectedFiles.length || pendingLat === null || !currentUser) return;
 
+  var n      = selectedFiles.length;
   var addBtn = document.getElementById('add-btn');
   addBtn.disabled    = true;
-  addBtn.textContent = 'Uploading...';
+  addBtn.textContent = n > 1 ? 'Uploading 0 of ' + n + '...' : 'Uploading...';
 
   try {
-    // 1. Upload image to Cloudinary
-    var photoUrl = await uploadToCloudinary(selectedFile);
-    var caption  = document.getElementById('caption').value.trim();
+    // 1. Upload all images to Cloudinary in parallel, tracking progress
+    var uploaded = 0;
+    var photoUrls = await Promise.all(
+      selectedFiles.map(async function(file) {
+        var url = await uploadToCloudinary(file);
+        uploaded++;
+        if (n > 1) addBtn.textContent = 'Uploading ' + uploaded + ' of ' + n + '...';
+        return url;
+      })
+    );
+
+    var caption = document.getElementById('caption').value.trim();
 
     // 2. Reverse-geocode
     var locName = pendingLat.toFixed(3) + ', ' + pendingLng.toFixed(3);
@@ -514,17 +533,19 @@ async function savePhoto() {
       }
     } catch(_) {}
 
-    // 3. Build the photo entry — tagged to the signed-in user
-    var photoEntry = {
-      url:          photoUrl,
-      caption:      caption,
-      uploadedBy:   currentUser.uid,
-      uploaderName: currentUser.displayName || 'Someone',
-      uploaderPhoto: currentUser.photoURL   || null,
-      createdAt:    new Date().toISOString()
-    };
+    // 3. Build one photo entry per uploaded file
+    var photoEntries = photoUrls.map(function(url) {
+      return {
+        url:          url,
+        caption:      caption,
+        uploadedBy:   currentUser.uid,
+        uploaderName: currentUser.displayName || 'Someone',
+        uploaderPhoto: currentUser.photoURL   || null,
+        createdAt:    new Date().toISOString()
+      };
+    });
 
-    // 4. Merge into nearby Firestore location or create a new one
+    // 4. Merge into nearby location or create new
     var MERGE_RADIUS_M = 3000;
     var nearby = locations.find(function(l) {
       return map.distance([l.lat, l.lng], [pendingLat, pendingLng]) < MERGE_RADIUS_M;
@@ -532,14 +553,17 @@ async function savePhoto() {
 
     if (nearby) {
       await db.collection('locations').doc(nearby.id).update({
-        photos: firebase.firestore.FieldValue.arrayUnion(photoEntry)
+        photos: firebase.firestore.FieldValue.arrayUnion.apply(
+          firebase.firestore.FieldValue,
+          photoEntries
+        )
       });
     } else {
       await db.collection('locations').add({
         name:      locName,
         lat:       pendingLat,
         lng:       pendingLng,
-        photos:    [photoEntry],
+        photos:    photoEntries,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
@@ -548,13 +572,13 @@ async function savePhoto() {
     if (tempPinMarker) { map.removeLayer(tempPinMarker); tempPinMarker = null; }
     resetUpload();
     map.flyTo([pendingLat, pendingLng], Math.max(map.getZoom(), 9), { duration: 1.4 });
-    toast('Photo added!');
+    toast(n > 1 ? n + ' photos added!' : 'Photo added!');
 
   } catch(err) {
     console.error('Save failed:', err);
     toast('Upload failed. Check your connection and try again.');
     addBtn.disabled    = false;
-    addBtn.textContent = 'Add to Map';
+    addBtn.textContent = n > 1 ? 'Add ' + n + ' Photos to Map' : 'Add to Map';
   }
 }
 
@@ -563,8 +587,8 @@ async function savePhoto() {
 // ─────────────────────────────────────────────────────────
 function openLightbox(url, caption, uploaderName) {
   document.getElementById('lightbox-img').src = url;
-  var cap = document.getElementById('lightbox-caption');
-  var parts = [];
+  var cap    = document.getElementById('lightbox-caption');
+  var parts  = [];
   if (uploaderName) parts.push(uploaderName);
   if (caption)      parts.push(caption);
   cap.textContent   = parts.join(' · ');
@@ -589,7 +613,7 @@ function toast(msg) {
 }
 
 // ─────────────────────────────────────────────────────────
-// KEYBOARD SHORTCUTS
+// KEYBOARD
 // ─────────────────────────────────────────────────────────
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape') return;
