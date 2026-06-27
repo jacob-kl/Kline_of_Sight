@@ -31,6 +31,13 @@
 
   <div id="filter-row" class="filter-row"></div>
   <div id="map"></div>
+
+  <!-- Map style switcher -->
+  <div class="map-style-switcher">
+    <button class="ms-btn" data-style="streets" onclick="setMapStyle('streets')">Streets</button>
+    <button class="ms-btn active" data-style="topo" onclick="setMapStyle('topo')">Atlas</button>
+    <button class="ms-btn" data-style="satellite" onclick="setMapStyle('satellite')">Satellite</button>
+  </div>
   <div id="pin-banner">📍 Tap anywhere on the map to place your photo</div>
 
   <button id="fab" onclick="handleFabClick()" title="Add photo" style="display:none">
