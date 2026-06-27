@@ -5,12 +5,12 @@
 //   Your apps → your web app → SDK setup and configuration
 // ─────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID"
+  apiKey:            "AIzaSyBhmHbskJtHo9FVXr0QoC0nM3iijBIipow",
+  authDomain:        "kline-of-sight.firebaseapp.com",
+  projectId:         "kline-of-sight",
+  storageBucket:     "kline-of-sight.firebasestorage.app",
+  messagingSenderId: "371974061736",
+  appId:             "1:371974061736:web:f0719f62973f01b1b20c9d"
 };
 
 // ─────────────────────────────────────────────────────────
@@ -19,5 +19,5 @@ const FIREBASE_CONFIG = {
 // Upload preset: Console Settings → Upload → Upload presets
 //   → the unsigned preset you created (e.g. "photo-map")
 // ─────────────────────────────────────────────────────────
-const CLOUDINARY_CLOUD_NAME    = "YOUR_CLOUD_NAME";
+const CLOUDINARY_CLOUD_NAME    = "dbjgzfa3x";
 const CLOUDINARY_UPLOAD_PRESET = "photo-map";
