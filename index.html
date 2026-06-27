@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Kline of Sight</title>
-
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
@@ -13,65 +12,32 @@
 </head>
 <body>
 
-  <!-- ── Family gate (shown until the user has joined a family) ── -->
-  <div id="family-gate" class="family-gate">
-    <div class="gate-card">
-      <div class="gate-logo">📍</div>
-      <h1 class="gate-title">Kline of Sight</h1>
-      <p class="gate-greeting">Welcome, <strong id="gate-name"></strong>.</p>
-
-      <div class="gate-section">
-        <p class="gate-label">Have an invite code?</p>
-        <input type="text" id="code-input" class="code-input"
-               placeholder="XXXXXX" maxlength="6"
-               oninput="this.value = this.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase()"
-               onkeydown="if(event.key==='Enter') joinWithCode()"/>
-        <div id="code-error" class="code-error"></div>
-        <button class="btn-gate-primary" id="btn-join" onclick="joinWithCode()">
-          Join Family
-        </button>
-      </div>
-
-      <div class="gate-divider"><span>or</span></div>
-
-      <div class="gate-section">
-        <p class="gate-label">Starting fresh?</p>
-        <button class="btn-gate-secondary" id="btn-create" onclick="createFamily()">
-          Set up a new family map
-        </button>
-        <p class="gate-hint">Only use this if you're the first person setting up — not if you've been invited.</p>
-      </div>
-    </div>
-  </div>
-
   <!-- ── Header ── -->
   <div class="app-header">
     <div class="logo-icon">📍</div>
     <span>Kline of Sight</span>
     <div class="header-divider"></div>
-    <button id="invite-btn" class="header-icon-btn" onclick="openInvitePanel()"
-            title="Invite family" style="display:none">
+    <button id="invite-btn" class="header-icon-btn" onclick="openSharingPanel()"
+            title="Sharing" style="display:none">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
       </svg>
     </button>
     <button id="auth-btn" class="auth-btn" onclick="handleAuthClick()">Sign in</button>
   </div>
 
-  <!-- ── Uploader filter ── -->
   <div id="filter-row" class="filter-row"></div>
-
   <div id="map"></div>
-
   <div id="pin-banner">📍 Tap anywhere on the map to place your photo</div>
 
-  <button id="fab" onclick="handleFabClick()" title="Add photo">
+  <button id="fab" onclick="handleFabClick()" title="Add photo" style="display:none">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
          stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <line x1="12" y1="5" x2="12" y2="19"/>
-      <line x1="5"  y1="12" x2="19" y2="12"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
     </svg>
   </button>
 
@@ -79,9 +45,9 @@
   <div class="overlay" id="viewer-overlay" onclick="maybeCloseViewer(event)">
     <div class="sheet">
       <div class="sheet-handle"></div>
-      <div class="viewer-location" id="vwr-location">📍</div>
-      <div class="viewer-title"   id="vwr-title">Photos</div>
-      <div class="photo-grid"     id="vwr-grid"></div>
+      <div class="viewer-location" id="vwr-location"></div>
+      <div class="viewer-title" id="vwr-title"></div>
+      <div class="photo-grid" id="vwr-grid"></div>
     </div>
   </div>
 
@@ -90,7 +56,6 @@
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="upload-title">Add a photo</div>
-
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
         <div id="dz-content">
           <div class="dz-icon">📷</div>
@@ -99,9 +64,7 @@
         </div>
       </div>
       <input type="file" id="file-input" accept="image/*" multiple onchange="handleFile(event)"/>
-
       <textarea class="caption-field" id="caption" rows="2" placeholder="Add a caption… (optional)"></textarea>
-
       <div class="loc-label">Where was this taken?</div>
       <div class="loc-opts">
         <div class="loc-opt" id="opt-gps" onclick="useGPS()">
@@ -120,43 +83,95 @@
           <div class="lo-sub">Type any name or address</div>
         </div>
       </div>
-
       <div id="search-panel">
         <div class="search-input-wrap">
           <input type="text" id="search-input" class="search-field"
                  placeholder="e.g. Yellowstone, Eiffel Tower, Tokyo…"
                  oninput="onSearchInput()" autocomplete="off"/>
-          <button class="search-clear-btn" onclick="clearSearch()" title="Clear">×</button>
+          <button class="search-clear-btn" onclick="clearSearch()">×</button>
         </div>
         <div id="search-results" class="search-results"></div>
       </div>
-
       <div class="loc-status" id="loc-status"></div>
-
       <button class="btn-add" id="add-btn" disabled onclick="savePhoto()">Add to Map</button>
     </div>
   </div>
 
-  <!-- ── Invite panel ── -->
-  <div class="overlay" id="invite-overlay" onclick="maybeCloseInvite(event)">
+  <!-- ── Sharing panel ── -->
+  <div class="overlay" id="sharing-overlay" onclick="maybeCloseSharing(event)">
     <div class="sheet">
       <div class="sheet-handle"></div>
-      <div class="upload-title">Invite Family</div>
-      <p class="invite-desc">Share this code. Anyone who enters it can view and add photos — for 24 hours.</p>
-      <div id="invite-code-display" class="invite-code-display">
-        <div class="code-generating">Generating…</div>
+      <div class="upload-title">Sharing</div>
+
+      <!-- Your code to give out -->
+      <div class="sharing-section">
+        <div class="sharing-label">Your invite code</div>
+        <p class="sharing-desc">Give this to someone so they can see your photos — and you'll see theirs.</p>
+        <div id="invite-code-display" class="invite-code-display">
+          <div class="code-generating">Tap "New Code" to generate one.</div>
+        </div>
+        <button class="btn-outline-sm" onclick="generateAndShowCode()" style="margin-top:10px">New Code</button>
       </div>
-      <button class="btn-add" style="margin-top:8px" onclick="generateAndShowCode()">
-        New Code
-      </button>
+
+      <div class="sharing-divider"></div>
+
+      <!-- Enter someone else's code -->
+      <div class="sharing-section">
+        <div class="sharing-label">Enter someone's code</div>
+        <p class="sharing-desc">Paste or type a code they sent you.</p>
+        <input type="text" id="connect-input" class="code-input-inline"
+               placeholder="XXXXXX" maxlength="6"
+               oninput="this.value=this.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase()"
+               onkeydown="if(event.key==='Enter') connectWithCode()"/>
+        <div id="connect-error" class="code-error" style="margin-top:6px"></div>
+        <button class="btn-add" id="btn-connect" onclick="connectWithCode()" style="margin-top:10px">Connect</button>
+      </div>
+
+      <!-- Active connections -->
+      <div id="connections-section" class="sharing-section" style="display:none">
+        <div class="sharing-divider"></div>
+        <div class="sharing-label">Connected with</div>
+        <div id="connections-list"></div>
+      </div>
     </div>
   </div>
 
   <!-- ── Lightbox ── -->
-  <div id="lightbox" onclick="closeLightbox()">
+  <div id="lightbox" onclick="lightboxBackdropClick(event)">
     <button id="lightbox-close" onclick="closeLightbox()">×</button>
-    <img id="lightbox-img" src="" alt=""/>
-    <div id="lightbox-caption"></div>
+
+    <button class="lb-arrow lb-left" id="lb-prev" onclick="lightboxNav(-1, event)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+
+    <img id="lightbox-img" src="" alt="" onclick="event.stopPropagation()"/>
+
+    <button class="lb-arrow lb-right" id="lb-next" onclick="lightboxNav(1, event)">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </button>
+
+    <div class="lb-bottom" onclick="event.stopPropagation()">
+      <div id="lb-caption" class="lb-caption"></div>
+      <div class="lb-controls">
+        <span id="lb-counter" class="lb-counter"></span>
+        <button id="lb-delete" class="lb-delete" onclick="deleteCurrentPhoto()" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14H6L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4h6v2"/>
+          </svg>
+          Delete
+        </button>
+      </div>
+    </div>
   </div>
 
   <div id="toast"></div>
