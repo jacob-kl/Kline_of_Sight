@@ -4,26 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Kline of Sight</title>
-
-  <!-- External: Leaflet -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css"/>
-
-  <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-  <!-- App styles (edit these files to change how the app looks) -->
-  <link rel="stylesheet" href="css/base.css"/>      <!-- colours, fonts, variables -->
-  <link rel="stylesheet" href="css/layout.css"/>    <!-- header, map, FAB, filter, toast -->
-  <link rel="stylesheet" href="css/modals.css"/>    <!-- shared overlay + sheet -->
-  <link rel="stylesheet" href="css/upload.css"/>    <!-- upload modal + search -->
-  <link rel="stylesheet" href="css/viewer.css"/>    <!-- photo grid + lightbox -->
-  <link rel="stylesheet" href="css/sharing.css"/>   <!-- sharing panel + invite codes -->
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
 
-  <!-- ── Header ─────────────────────────────────────────── -->
+  <!-- ── Header ── -->
   <div class="app-header">
     <div class="logo-icon">📍</div>
     <span>Kline of Sight</span>
@@ -34,63 +23,46 @@
            stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
         <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-        <line x1="15.41" y1="6.51"  x2="8.59"  y2="10.49"/>
+        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
       </svg>
     </button>
     <button id="auth-btn" class="auth-btn" onclick="handleAuthClick()">Sign in</button>
   </div>
 
-  <!-- Filter row — appears automatically once 2+ people upload -->
   <div id="filter-row" class="filter-row"></div>
-
   <div id="map"></div>
 
   <!-- Map style switcher -->
   <div class="map-style-switcher">
-    <button class="ms-btn"        data-style="streets"   onclick="setMapStyle('streets')">Streets</button>
-    <button class="ms-btn active" data-style="topo"      onclick="setMapStyle('topo')">Atlas</button>
-    <button class="ms-btn"        data-style="satellite" onclick="setMapStyle('satellite')">Satellite</button>
+    <button class="ms-btn" data-style="streets" onclick="setMapStyle('streets')">Streets</button>
+    <button class="ms-btn active" data-style="topo" onclick="setMapStyle('topo')">Atlas</button>
+    <button class="ms-btn" data-style="satellite" onclick="setMapStyle('satellite')">Satellite</button>
   </div>
-
   <div id="pin-banner">📍 Tap anywhere on the map to place your photo</div>
 
   <button id="fab" onclick="handleFabClick()" title="Add photo" style="display:none">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
          stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <line x1="12" y1="5" x2="12" y2="19"/>
-      <line x1="5"  y1="12" x2="19" y2="12"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
     </svg>
   </button>
 
-  <!-- ── Photo viewer modal ─────────────────────────────── -->
+  <!-- ── Viewer modal ── -->
   <div class="overlay" id="viewer-overlay" onclick="maybeCloseViewer(event)">
     <div class="sheet">
       <div class="sheet-handle"></div>
-      <div id="vwr-event-badge" style="display:none"></div>
       <div class="viewer-location" id="vwr-location"></div>
-      <div class="viewer-title"   id="vwr-title"></div>
-      <div class="photo-grid"     id="vwr-grid"></div>
-      <button id="vwr-add-event-btn" onclick="openAddEventOverlay(currentViewerLocId)">
-        📅 Add to event
-      </button>
+      <div class="viewer-title" id="vwr-title"></div>
+      <div class="photo-grid" id="vwr-grid"></div>
     </div>
   </div>
 
-  <!-- ── Add to Event overlay ───────────────────────────── -->
-  <div class="overlay" id="add-event-overlay" onclick="maybeCloseAddEvent(event)">
-    <div class="sheet">
-      <div class="sheet-handle"></div>
-      <div class="upload-title">Add to Event</div>
-      <div id="add-event-list"></div>
-    </div>
-  </div>
-
-  <!-- ── Upload modal ───────────────────────────────────── -->
+  <!-- ── Upload modal ── -->
   <div class="overlay" id="upload-overlay" onclick="maybeCloseUpload(event)">
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="upload-title">Add a photo</div>
-
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
         <div id="dz-content">
           <div class="dz-icon">📷</div>
@@ -99,10 +71,7 @@
         </div>
       </div>
       <input type="file" id="file-input" accept="image/*" multiple onchange="handleFile(event)"/>
-
-      <textarea class="caption-field" id="caption" rows="2"
-                placeholder="Add a caption… (optional)"></textarea>
-
+      <textarea class="caption-field" id="caption" rows="2" placeholder="Add a caption… (optional)"></textarea>
       <div class="loc-label">Where was this taken?</div>
       <div class="loc-opts">
         <div class="loc-opt" id="opt-gps" onclick="useGPS()">
@@ -121,7 +90,6 @@
           <div class="lo-sub">Type any name or address</div>
         </div>
       </div>
-
       <div id="search-panel">
         <div class="search-input-wrap">
           <input type="text" id="search-input" class="search-field"
@@ -131,38 +99,21 @@
         </div>
         <div id="search-results" class="search-results"></div>
       </div>
-
       <div class="loc-status" id="loc-status"></div>
-
-      <!-- Event picker -->
-      <div class="event-section">
-        <div class="loc-label">Which trip is this from? <span class="optional-tag">optional</span></div>
-        <div class="event-picker-scroll" id="event-picker-options">
-          <!-- Rendered by events.js -->
-        </div>
-        <div id="new-event-form" style="display:none">
-          <input type="text" id="new-event-name"
-                 placeholder="Event name (e.g. Thanksgiving 2025)"
-                 oninput="onEventNameInput(event)"/>
-          <input type="text" id="new-event-date"
-                 placeholder="MM/YYYY" maxlength="7"
-                 oninput="onEventDateInput(event)"/>
-        </div>
-      </div>
-
       <button class="btn-add" id="add-btn" disabled onclick="savePhoto()">Add to Map</button>
     </div>
   </div>
 
-  <!-- ── Sharing panel ──────────────────────────────────── -->
+  <!-- ── Sharing panel ── -->
   <div class="overlay" id="sharing-overlay" onclick="maybeCloseSharing(event)">
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="upload-title">Sharing</div>
 
+      <!-- Your code to give out -->
       <div class="sharing-section">
         <div class="sharing-label">Your invite code</div>
-        <p class="sharing-desc">Give this to someone — they'll see your photos and you'll see theirs.</p>
+        <p class="sharing-desc">Give this to someone so they can see your photos — and you'll see theirs.</p>
         <div id="invite-code-display" class="invite-code-display">
           <div class="code-generating">Tap "New Code" to generate one.</div>
         </div>
@@ -171,9 +122,10 @@
 
       <div class="sharing-divider"></div>
 
+      <!-- Enter someone else's code -->
       <div class="sharing-section">
         <div class="sharing-label">Enter someone's code</div>
-        <p class="sharing-desc">Paste or type the code they sent you.</p>
+        <p class="sharing-desc">Paste or type a code they sent you.</p>
         <input type="text" id="connect-input" class="code-input-inline"
                placeholder="XXXXXX" maxlength="6"
                oninput="this.value=this.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase()"
@@ -182,6 +134,7 @@
         <button class="btn-add" id="btn-connect" onclick="connectWithCode()" style="margin-top:10px">Connect</button>
       </div>
 
+      <!-- Active connections -->
       <div id="connections-section" class="sharing-section" style="display:none">
         <div class="sharing-divider"></div>
         <div class="sharing-label">Connected with</div>
@@ -190,11 +143,13 @@
     </div>
   </div>
 
-  <!-- ── Lightbox ───────────────────────────────────────── -->
+  <!-- ── Lightbox ── -->
   <div id="lightbox" onclick="lightboxBackdropClick(event)">
 
+    <!-- X centered at top, clear of both arrows -->
     <button id="lightbox-close" onclick="closeLightbox()">×</button>
 
+    <!-- Arrows restricted to middle zone so they don't crowd the X or bottom bar -->
     <button class="lb-arrow lb-left" id="lb-prev" onclick="lightboxNav(-1, event)">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -202,8 +157,11 @@
       </svg>
     </button>
 
+    <!-- Scrollable image zone — enables panning when zoomed -->
     <div class="lb-image-wrap" id="lb-image-wrap">
-      <img id="lightbox-img" src="" alt="" onclick="toggleZoom(event)" title="Click to zoom"/>
+      <img id="lightbox-img" src="" alt=""
+           onclick="toggleZoom(event)"
+           title="Click to zoom"/>
     </div>
 
     <button class="lb-arrow lb-right" id="lb-next" onclick="lightboxNav(1, event)">
@@ -217,6 +175,7 @@
       <div id="lb-caption" class="lb-caption"></div>
       <div class="lb-controls">
 
+        <!-- Save to device -->
         <button class="lb-action-btn lb-save" onclick="downloadCurrentPhoto()" title="Save photo">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -229,17 +188,20 @@
 
         <span id="lb-counter" class="lb-counter"></span>
 
-        <button class="lb-action-btn lb-zoom-btn" id="lb-zoom-btn" onclick="toggleZoom(event)" title="Zoom">
+        <!-- Zoom toggle -->
+        <button class="lb-action-btn lb-zoom-btn" id="lb-zoom-btn"
+                onclick="toggleZoom(event)" title="Zoom">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"/>
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            <line x1="11" y1="8"  x2="11" y2="14"/>
-            <line x1="8"  y1="11" x2="14" y2="11"/>
+            <line x1="11" y1="8" x2="11" y2="14"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
           </svg>
           <span id="lb-zoom-label">Zoom</span>
         </button>
 
+        <!-- Delete (owner only) -->
         <button id="lb-delete" class="lb-action-btn lb-delete"
                 onclick="deleteCurrentPhoto()" style="display:none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -258,26 +220,12 @@
 
   <div id="toast"></div>
 
-  <!-- ── External libraries ─────────────────────────────── -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
-
-  <!-- Config: fill in your credentials here -->
   <script src="config.js"></script>
-
-  <!-- App modules (order matters — firebase.js must be first) -->
-  <script src="js/firebase.js"></script>     <!-- init db + auth -->
-  <script src="js/auth.js"></script>         <!-- sign in/out, FAB, keyboard, toast -->
-  <script src="js/map.js"></script>          <!-- tiles, markers, filter -->
-  <script src="js/connections.js"></script>  <!-- Firestore listeners, privacy -->
-  <script src="js/events.js"></script>       <!-- events: create, filter, add-to-event -->
-  <script src="js/viewer.js"></script>       <!-- photo grid -->
-  <script src="js/lightbox.js"></script>     <!-- full-screen viewer -->
-  <script src="js/upload.js"></script>       <!-- upload flow + Cloudinary -->
-  <script src="js/sharing.js"></script>      <!-- invite codes + connect -->
-
+  <script src="app.js"></script>
 </body>
 </html>
