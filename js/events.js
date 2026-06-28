@@ -2,15 +2,18 @@
 // Events
 //
 // Reads:  db, currentUser, connectedUIDs, accessibleEvents,
-//         locations, map, pendingLat, pendingLng
-// Writes: events, selectedEventId, selectedEventFilter
+//         locations, allUploaders, map, pendingLat, pendingLng
+// Writes: events, selectedEventId, selectedEventFilter,
+//         selectedPersonEventFilter, newEventPrivate
 // ─────────────────────────────────────────────────────────
-let events              = [];
-let selectedEventId     = 'daytoday';
-let newEventName        = '';
-let newEventDate        = '';
-let selectedEventFilter = null;
-let currentViewerLocId  = null;
+let events                  = [];
+let selectedEventId         = 'daytoday';
+let newEventName            = '';
+let newEventDate            = '';
+let newEventPrivate         = false;
+let selectedEventFilter     = null;
+let selectedPersonEventFilter = null; // person filter inside event dropdown
+let currentViewerLocId      = null;
 
 // ── Real-time listener ───────────────────────────────────
 function startEventsListener() {
@@ -22,15 +25,21 @@ function startEventsListener() {
     .onSnapshot(function(snap) {
       events = snap.docs.map(function(doc) {
         return Object.assign({ id: doc.id }, doc.data());
+      }).filter(function(evt) {
+        // Always show your own events (public or private)
+        if (evt.createdBy === currentUser.uid) return true;
+        // For others' events, only show non-private ones
+        return !evt.private;
       });
+
       events.sort(function(a, b) {
         var da  = (a.date || '').split('/').reverse().join('');
         var db2 = (b.date || '').split('/').reverse().join('');
         return db2.localeCompare(da);
       });
+
       renderEventPickerIfOpen();
       renderEventFilter();
-      // Refresh trip select in sharing panel if open
       if (document.getElementById('sharing-overlay').classList.contains('open')) {
         populateShareEventSelect();
       }
@@ -39,10 +48,9 @@ function startEventsListener() {
     });
 }
 
-// ── All events visible to this user (owned + trip access) ─
+// ── All visible events (owned + trip-access) ─────────────
 function allVisibleEvents() {
   var result = events.slice();
-  // Add events from trip access that aren't already in the list
   (accessibleEvents || []).forEach(function(a) {
     if (!result.find(function(e) { return e.id === a.eventId; })) {
       result.push({ id: a.eventId, name: a.eventName, date: '', createdBy: a.grantedBy, tripOnly: true });
@@ -51,7 +59,7 @@ function allVisibleEvents() {
   return result;
 }
 
-// ── Nearby events (within 100 miles of pending location) ──
+// ── Nearby events (within 100 miles) ─────────────────────
 function getNearbyEvents() {
   if (pendingLat === null || pendingLng === null) return [];
   var RADIUS_M  = 160934;
@@ -73,20 +81,20 @@ function renderEventPicker() {
   if (!container) return;
   container.innerHTML = '';
 
-  var hasLocation = (pendingLat !== null && pendingLng !== null);
-  var nearbyEvts  = hasLocation ? getNearbyEvents() : [];
-  var all         = allVisibleEvents();
+  var hasLoc     = (pendingLat !== null && pendingLng !== null);
+  var nearbyEvts = hasLoc ? getNearbyEvents() : [];
+  var all        = allVisibleEvents();
 
   container.appendChild(makeEventPill('daytoday', '📅 Day to Day', selectedEventId === 'daytoday'));
 
-  if (!hasLocation) {
+  if (!hasLoc) {
     var hint = document.createElement('span');
     hint.className   = 'event-picker-hint';
     hint.textContent = 'Set a location above to see nearby events';
     container.appendChild(hint);
   } else if (nearbyEvts.length > 0) {
     nearbyEvts.forEach(function(evt) {
-      var label = evt.name + (evt.date ? ' (' + evt.date + ')' : '') + (evt.tripOnly ? ' 🗺️' : '');
+      var label = (evt.private ? '🔒 ' : '') + evt.name + (evt.date ? ' (' + evt.date + ')' : '') + (evt.tripOnly ? ' 🗺️' : '');
       container.appendChild(makeEventPill(evt.id, label, selectedEventId === evt.id));
     });
   } else if (all.length > 0) {
@@ -95,7 +103,7 @@ function renderEventPicker() {
     hint.textContent = 'No events within 100 mi — showing all';
     container.appendChild(hint);
     all.forEach(function(evt) {
-      var label = evt.name + (evt.date ? ' (' + evt.date + ')' : '') + (evt.tripOnly ? ' 🗺️' : '');
+      var label = (evt.private ? '🔒 ' : '') + evt.name + (evt.date ? ' (' + evt.date + ')' : '');
       container.appendChild(makeEventPill(evt.id, label, selectedEventId === evt.id));
     });
   }
@@ -118,7 +126,8 @@ function makeEventPill(id, label, active) {
   return btn;
 }
 
-function onEventNameInput(e) { newEventName = e.target.value.trim(); }
+function onEventNameInput(e)    { newEventName    = e.target.value.trim(); }
+function onEventPrivateInput(e) { newEventPrivate = e.target.checked; }
 
 function onEventDateInput(e) {
   var raw = e.target.value.replace(/[^0-9]/g, '');
@@ -127,11 +136,13 @@ function onEventDateInput(e) {
 }
 
 function resetEventPicker() {
-  selectedEventId = 'daytoday'; newEventName = ''; newEventDate = '';
+  selectedEventId = 'daytoday'; newEventName = ''; newEventDate = ''; newEventPrivate = false;
   var n = document.getElementById('new-event-name');
   var d = document.getElementById('new-event-date');
-  if (n) n.value = '';
-  if (d) d.value = '';
+  var p = document.getElementById('new-event-private');
+  if (n) n.value   = '';
+  if (d) d.value   = '';
+  if (p) p.checked = false;
   renderEventPicker();
 }
 
@@ -145,12 +156,12 @@ async function resolveSelectedEvent() {
     var ref = await db.collection('events').add({
       name:      newEventName,
       date:      newEventDate || '',
+      private:   newEventPrivate || false,
       createdBy: currentUser.uid,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     return { id: ref.id, name: newEventName, date: newEventDate || '' };
   }
-  // Check both owned events and trip-access events
   var evt = allVisibleEvents().find(function(e) { return e.id === selectedEventId; });
   return evt ? { id: evt.id, name: evt.name, date: evt.date || '' } : null;
 }
@@ -163,19 +174,31 @@ function isValidDate(d) {
   return m >= 1 && m <= 12 && y >= 2000 && y <= 2099;
 }
 
-// ── Event filter (single dropdown in filter row) ──────────
+// ── Event filter — dropdown with year groups + person filter ─
+var _dropdownEventsMap = null; // kept so person filter can rebuild without re-scanning
+
 function renderEventFilter() {
   var row = document.getElementById('filter-row');
   if (!row) return;
   var old = row.querySelector('.event-filter-wrap');
   if (old) old.parentNode.removeChild(old);
 
+  // Build map of events visible on the map, including date
   var seen = new Map();
   (locations || []).forEach(function(loc) {
-    if (loc.eventId && loc.eventName && !seen.has(loc.eventId))
-      seen.set(loc.eventId, { id: loc.eventId, name: loc.eventName });
+    if (loc.eventId && loc.eventName && !seen.has(loc.eventId)) {
+      var isPrivate = (events || []).some(function(e) { return e.id === loc.eventId && e.private; });
+      seen.set(loc.eventId, {
+        id:      loc.eventId,
+        name:    loc.eventName,
+        date:    loc.eventDate || '',
+        private: isPrivate
+      });
+    }
   });
   if (seen.size === 0) return;
+
+  _dropdownEventsMap = seen;
 
   var currentName = selectedEventFilter
     ? (seen.has(selectedEventFilter) ? seen.get(selectedEventFilter).name : 'Trip')
@@ -186,34 +209,149 @@ function renderEventFilter() {
   var btn = document.createElement('button');
   btn.className   = 'event-filter-pill' + (selectedEventFilter ? ' active' : '');
   btn.textContent = '📅 ' + currentName + ' ▾';
-  btn.onclick     = function(e) { e.stopPropagation(); toggleEventDropdown(seen, btn); };
+  btn.onclick     = function(e) { e.stopPropagation(); buildEventDropdown(_dropdownEventsMap, btn); };
   wrap.appendChild(btn);
   row.appendChild(wrap);
   if (row.style.display === 'none') row.style.display = 'flex';
 }
 
-function toggleEventDropdown(eventsMap, anchorBtn) {
+function buildEventDropdown(eventsMap, anchorBtn) {
   var existing = document.getElementById('event-dropdown');
   if (existing) { existing.remove(); return; }
 
   var dropdown = document.createElement('div');
   dropdown.id = 'event-dropdown'; dropdown.className = 'event-dropdown';
 
-  function makeItem(id, label) {
-    var item = document.createElement('button');
-    item.className   = 'event-drop-item' + (selectedEventFilter === id ? ' active' : '');
-    item.textContent = label;
-    item.onclick     = function() { applyEventFilter(id); };
-    return item;
+  // ── Person filter bar ───────────────────────────────────
+  if (allUploaders && allUploaders.size > 1) {
+    var bar = document.createElement('div');
+    bar.className = 'event-drop-person-bar';
+
+    function makePersBtn(uid, label, photoURL) {
+      var btn = document.createElement('button');
+      btn.className = 'event-drop-person-pill' + (selectedPersonEventFilter === uid ? ' active' : '');
+      btn.title     = label;
+      btn.innerHTML = photoURL
+        ? '<img src="' + photoURL + '" alt="' + label + '"/>'
+        : label === 'All' ? 'All' : label[0].toUpperCase();
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        selectedPersonEventFilter = uid;
+        buildEventDropdown(eventsMap, anchorBtn);
+      };
+      return btn;
+    }
+
+    bar.appendChild(makePersBtn(null, 'All', null));
+    allUploaders.forEach(function(u) {
+      bar.appendChild(makePersBtn(u.uid, u.displayName, u.photoURL));
+    });
+    dropdown.appendChild(bar);
   }
-  dropdown.appendChild(makeItem(null, '📅 All trips'));
-  eventsMap.forEach(function(evt) { dropdown.appendChild(makeItem(evt.id, evt.name)); });
+
+  // ── All trips option ────────────────────────────────────
+  dropdown.appendChild(makeDropItem(null, '📅 All trips'));
+
+  // ── Apply person filter ─────────────────────────────────
+  var visibleMap = eventsMap;
+  if (selectedPersonEventFilter) {
+    var personEventIds = new Set();
+    (locations || []).forEach(function(loc) {
+      if (loc.eventId) {
+        (loc.photos || []).forEach(function(p) {
+          if (p.uploadedBy === selectedPersonEventFilter) personEventIds.add(loc.eventId);
+        });
+      }
+    });
+    visibleMap = new Map();
+    eventsMap.forEach(function(evt) {
+      if (personEventIds.has(evt.id)) visibleMap.set(evt.id, evt);
+    });
+  }
+
+  // ── Group by year, sort alphabetically within year ──────
+  var byYear = {};
+  var noYear = [];
+  visibleMap.forEach(function(evt) {
+    var year = '';
+    if (evt.date) {
+      var parts = evt.date.split('/');
+      if (parts.length === 2 && parts[1].length === 4) year = parts[1];
+    }
+    if (year) { if (!byYear[year]) byYear[year] = []; byYear[year].push(evt); }
+    else       { noYear.push(evt); }
+  });
+
+  var years = Object.keys(byYear).sort(function(a, b) { return parseInt(b) - parseInt(a); });
+
+  years.forEach(function(year, idx) {
+    byYear[year].sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+    // Auto-expand the most recent year, or whichever contains the active filter
+    var hasActive = byYear[year].some(function(e) { return e.id === selectedEventFilter; });
+    var isOpen    = (idx === 0) || hasActive;
+
+    var header = document.createElement('button');
+    header.type      = 'button';
+    header.className = 'event-drop-year-header' + (isOpen ? ' open' : '');
+    header.innerHTML = '<span>' + year + '</span><span class="year-arrow">▶</span>';
+
+    var group = document.createElement('div');
+    group.className = 'event-drop-year-group' + (isOpen ? '' : ' closed');
+
+    header.onclick = function(e) {
+      e.stopPropagation();
+      header.classList.toggle('open');
+      group.classList.toggle('closed');
+    };
+
+    byYear[year].forEach(function(evt) {
+      group.appendChild(makeDropItem(evt.id, (evt.private ? '🔒 ' : '') + evt.name));
+    });
+
+    dropdown.appendChild(header);
+    dropdown.appendChild(group);
+  });
+
+  // Events without a date — always expanded
+  if (noYear.length > 0) {
+    noYear.sort(function(a, b) { return a.name.localeCompare(b.name); });
+
+    var otherHeader = document.createElement('button');
+    otherHeader.type      = 'button';
+    otherHeader.className = 'event-drop-year-header open';
+    otherHeader.innerHTML = '<span>No date</span><span class="year-arrow">▶</span>';
+
+    var otherGroup = document.createElement('div');
+    otherGroup.className = 'event-drop-year-group';
+
+    otherHeader.onclick = function(e) {
+      e.stopPropagation();
+      otherHeader.classList.toggle('open');
+      otherGroup.classList.toggle('closed');
+    };
+
+    noYear.forEach(function(evt) {
+      otherGroup.appendChild(makeDropItem(evt.id, (evt.private ? '🔒 ' : '') + evt.name));
+    });
+
+    dropdown.appendChild(otherHeader);
+    dropdown.appendChild(otherGroup);
+  }
+
+  if (dropdown.querySelectorAll('.event-drop-item').length === 1) {
+    // Only "All trips" visible — show a hint
+    var empty = document.createElement('div');
+    empty.className   = 'event-drop-empty';
+    empty.textContent = selectedPersonEventFilter ? 'No events from this person' : 'No events yet';
+    dropdown.appendChild(empty);
+  }
 
   document.body.appendChild(dropdown);
   var row  = document.getElementById('filter-row');
   var rect = row.getBoundingClientRect();
   dropdown.style.top  = (rect.bottom + 6) + 'px';
-  dropdown.style.left = Math.min(rect.left + 8, window.innerWidth - 220) + 'px';
+  dropdown.style.left = Math.min(rect.left + 8, window.innerWidth - 240) + 'px';
 
   setTimeout(function() {
     document.addEventListener('click', function close() {
@@ -222,6 +360,14 @@ function toggleEventDropdown(eventsMap, anchorBtn) {
       document.removeEventListener('click', close);
     });
   }, 10);
+}
+
+function makeDropItem(id, label) {
+  var item = document.createElement('button');
+  item.className   = 'event-drop-item' + (selectedEventFilter === id ? ' active' : '');
+  item.textContent = label;
+  item.onclick     = function() { applyEventFilter(id); };
+  return item;
 }
 
 function applyEventFilter(id) {
@@ -248,7 +394,7 @@ function openAddEventOverlay(locId) {
     visible.forEach(function(evt) {
       var item = document.createElement('button');
       item.className = 'ae-item';
-      item.innerHTML = '<span class="ae-name">' + evt.name + (evt.tripOnly ? ' 🗺️' : '') + '</span>' +
+      item.innerHTML = '<span class="ae-name">' + (evt.private ? '🔒 ' : '') + evt.name + (evt.tripOnly ? ' 🗺️' : '') + '</span>' +
                        (evt.date ? '<span class="ae-date">' + evt.date + '</span>' : '');
       item.onclick = function() { assignLocationToEvent(locId, evt); };
       list.appendChild(item);

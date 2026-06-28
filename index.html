@@ -147,6 +147,14 @@
           <input type="text" id="new-event-date"
                  placeholder="MM/YYYY" maxlength="7"
                  oninput="onEventDateInput(event)"/>
+          <label class="private-toggle-label">
+            <input type="checkbox" id="new-event-private" class="private-checkbox"
+                   onchange="onEventPrivateInput(event)"/>
+            <span class="private-toggle-text">
+              🔒 Private event
+              <span class="private-toggle-hint">Only visible to you (share via trip code)</span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -159,6 +167,22 @@
     <div class="sheet">
       <div class="sheet-handle"></div>
       <div class="upload-title">Sharing</div>
+
+      <!-- Profile section -->
+      <div class="profile-section">
+        <div class="profile-avatar-wrap" id="profile-avatar-wrap"
+             onclick="document.getElementById('avatar-input').click()"
+             title="Tap to change photo">
+          <div id="profile-avatar-img" class="profile-avatar-img"></div>
+          <div class="profile-avatar-edit">✏️</div>
+        </div>
+        <div class="profile-info">
+          <div class="profile-name" id="profile-name"></div>
+          <div class="profile-change-hint">Tap photo to change</div>
+        </div>
+        <input type="file" id="avatar-input" accept="image/*" style="display:none"
+               onchange="handleAvatarUpload(event)"/>
+      </div>
 
       <!-- ① Your family -->
       <div class="sharing-section">
@@ -218,6 +242,30 @@
                 onclick="joinWithTripCode()" style="margin-top:10px">Join Trip</button>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ── Private event sharing dialog ─────────────────── -->
+  <div class="overlay" id="private-share-overlay" onclick="closePrivateShareDialog(event)">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="upload-title" style="font-size:20px">Share private events?</div>
+      <p class="sharing-desc">
+        You have <strong id="private-event-count">0</strong> private event(s).
+        Would you like <strong id="new-connection-name">your new connection</strong>
+        to see them?
+      </p>
+      <p class="sharing-desc" style="font-size:12px;color:var(--text-faint)">
+        They'll be able to view and add photos to these events.
+        You can always share individual events later via trip codes instead.
+      </p>
+      <button class="btn-add" onclick="sharePrivateEventsWithNew()" style="margin-bottom:10px">
+        Yes, share my private events
+      </button>
+      <button class="btn-outline-sm" onclick="closePrivateShareDialog()"
+              style="width:100%;text-align:center;display:block">
+        Keep them private for now
+      </button>
     </div>
   </div>
 

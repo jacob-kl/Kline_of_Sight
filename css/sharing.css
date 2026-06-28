@@ -1,32 +1,62 @@
 /* ─────────────────────────────────────────────────────────
-   Sharing panel — three sections
+   Sharing panel
 ───────────────────────────────────────────────────────── */
 .sharing-section  { margin-bottom: 4px; }
-
 .sharing-label {
-  font-size: 11px; font-weight: 700;
-  color: var(--text-faint);
-  text-transform: uppercase; letter-spacing: .07em;
-  margin-bottom: 8px;
+  font-size: 11px; font-weight: 700; color: var(--text-faint);
+  text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px;
 }
-
-.sharing-desc {
-  font-size: 13px; color: var(--text-muted);
-  line-height: 1.5; margin-bottom: 12px;
-}
-
+.sharing-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px; }
 .sharing-divider { height: 1px; background: #f1f5f9; margin: 20px 0; }
-
-.sharing-or {
-  text-align: center; font-size: 12px; color: var(--text-faint);
-  margin: 14px 0;
-}
+.sharing-or { text-align: center; font-size: 12px; color: var(--text-faint); margin: 14px 0; }
 
 /* ─────────────────────────────────────────────────────────
-   Family list (your connections)
+   Profile section (top of sharing panel)
 ───────────────────────────────────────────────────────── */
-.family-list  { margin-bottom: 12px; }
-.family-empty { font-size: 13px; color: var(--text-faint); line-height: 1.5; padding: 4px 0; }
+.profile-section {
+  display: flex; align-items: center; gap: 14px;
+  padding: 4px 0 20px; border-bottom: 1px solid #f1f5f9; margin-bottom: 20px;
+}
+
+.profile-avatar-wrap {
+  position: relative; width: 56px; height: 56px; flex-shrink: 0;
+  cursor: pointer; border-radius: 50%; overflow: hidden;
+  border: 2.5px solid var(--border);
+  transition: border-color .15s;
+}
+.profile-avatar-wrap:hover { border-color: var(--accent); }
+
+#profile-avatar-img {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-red));
+}
+#profile-avatar-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.profile-initial {
+  color: var(--white); font-size: 22px; font-weight: 700;
+}
+
+.profile-avatar-edit {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.4); color: var(--white);
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .15s;
+}
+.profile-avatar-wrap:hover .profile-avatar-edit { opacity: 1; }
+
+.profile-info { flex: 1; min-width: 0; }
+.profile-name {
+  font-size: 17px; font-weight: 700; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.profile-change-hint { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+
+/* ─────────────────────────────────────────────────────────
+   Family list
+───────────────────────────────────────────────────────── */
+.family-list    { margin-bottom: 12px; }
+.family-empty   { font-size: 13px; color: var(--text-faint); line-height: 1.5; padding: 4px 0; }
 .family-loading { font-size: 13px; color: var(--text-faint); padding: 4px 0; }
 
 .family-item {
@@ -36,15 +66,12 @@
 .family-item:last-child { border-bottom: none; }
 
 .family-avatar {
-  width: 40px; height: 40px; border-radius: 50%;
-  overflow: hidden; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
   background: linear-gradient(135deg, #667eea, #764ba2);
   display: flex; align-items: center; justify-content: center;
 }
 .family-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.family-initials {
-  color: var(--white); font-size: 15px; font-weight: 700;
-}
+.family-initials { color: var(--white); font-size: 15px; font-weight: 700; }
 
 .family-info { flex: 1; min-width: 0; }
 .family-name {
@@ -54,36 +81,31 @@
 .family-access { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
 
 /* ─────────────────────────────────────────────────────────
-   Invite code display
+   Invite code display boxes
 ───────────────────────────────────────────────────────── */
 .invite-code-display {
   background: var(--surface); border: 1.5px solid var(--border);
   border-radius: var(--radius-lg); padding: 20px; text-align: center;
 }
-
 .code-generating { color: var(--text-faint); font-size: 13px; padding: 6px 0; }
 
 .big-code {
-  font-size: 36px; font-weight: 800;
-  letter-spacing: .22em; color: var(--text);
-  margin-bottom: 4px; font-variant-numeric: tabular-nums;
+  font-size: 36px; font-weight: 800; letter-spacing: .22em;
+  color: var(--text); margin-bottom: 4px; font-variant-numeric: tabular-nums;
 }
-
 .code-expires { font-size: 12px; color: var(--text-faint); margin-bottom: 14px; }
 
 .btn-copy {
-  background: var(--text); color: var(--white);
-  border: none; border-radius: 10px;
-  padding: 9px 22px; font-size: 13px; font-weight: 600;
+  background: var(--text); color: var(--white); border: none;
+  border-radius: 10px; padding: 9px 22px; font-size: 13px; font-weight: 600;
   font-family: var(--font); cursor: pointer; transition: opacity .15s;
 }
 .btn-copy:hover { opacity: .82; }
 
 .btn-outline-sm {
   background: none; border: 1.5px solid var(--border); color: #475569;
-  border-radius: 10px; padding: 9px 18px;
-  font-size: 13px; font-weight: 600; font-family: var(--font);
-  cursor: pointer; display: inline-block;
+  border-radius: 10px; padding: 9px 18px; font-size: 13px; font-weight: 600;
+  font-family: var(--font); cursor: pointer; display: inline-block;
   transition: border-color .15s, background .15s;
 }
 .btn-outline-sm:hover { border-color: #94a3b8; background: var(--surface); }
@@ -92,37 +114,25 @@
    Code input fields
 ───────────────────────────────────────────────────────── */
 .code-input-inline {
-  width: 100%; font-family: var(--font);
-  font-size: 22px; font-weight: 800;
+  width: 100%; font-family: var(--font); font-size: 22px; font-weight: 800;
   letter-spacing: .22em; text-align: center;
   border: 1.5px solid var(--border); border-radius: var(--radius-md);
-  padding: 12px 10px; color: var(--text);
-  outline: none; text-transform: uppercase; display: block;
-  transition: border-color .15s;
+  padding: 12px 10px; color: var(--text); outline: none;
+  text-transform: uppercase; display: block; transition: border-color .15s;
 }
 .code-input-inline:focus { border-color: var(--accent); }
-
-.code-error {
-  font-size: 13px; color: var(--accent-red);
-  min-height: 18px; text-align: center;
-}
+.code-error { font-size: 13px; color: var(--accent-red); min-height: 18px; text-align: center; }
 
 /* ─────────────────────────────────────────────────────────
-   Trip (event) sharing selector
+   Trip sharing event selector
 ───────────────────────────────────────────────────────── */
 .share-event-select {
-  width: 100%;
-  border: 1.5px solid var(--border); border-radius: var(--radius-md);
-  padding: 11px 14px;
-  font-size: 14px; font-family: var(--font); color: var(--text);
-  background: var(--white); outline: none;
-  transition: border-color .15s; cursor: pointer;
+  width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius-md);
+  padding: 11px 36px 11px 14px; font-size: 14px; font-family: var(--font); color: var(--text);
+  background: var(--white); outline: none; transition: border-color .15s; cursor: pointer;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-  padding-right: 36px;
+  background-repeat: no-repeat; background-position: right 14px center;
 }
 .share-event-select:focus { border-color: var(--accent); }
-
 #trip-code-area { margin-top: 4px; }
