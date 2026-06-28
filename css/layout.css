@@ -6,6 +6,7 @@
   height: 100vh;
   position: fixed;
   inset: 0;
+  z-index: 1;   /* globe sits above this at z-index 50 */
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -348,3 +349,61 @@
 }
 .event-filter-btn:hover  { border-color: var(--accent); color: var(--text); }
 .event-filter-btn.active { border-color: var(--accent); background: #fffbeb; color: var(--text); }
+
+/* ─────────────────────────────────────────────────────────
+   Globe container  (globe.gl renders here)
+   z-index 50 = above the Leaflet map (z-index 1) but
+   below all UI controls (header/FAB/modals are 800-4000).
+   When flat map is active, globe gets .flat-mode and hides.
+───────────────────────────────────────────────────────── */
+#globe-container {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #060d1f;
+}
+
+/* Globe is hidden when flat map mode is active */
+#globe-container.flat-mode { display: none; }
+
+/* ─────────────────────────────────────────────────────────
+   Event filter — single dropdown pill in the filter row
+───────────────────────────────────────────────────────── */
+.event-filter-wrap { display: flex; align-items: center; }
+
+.event-filter-pill {
+  border: 1.5px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  border-radius: var(--radius-pill);
+  padding: 5px 12px;
+  font-size: 12px; font-weight: 600; font-family: var(--font);
+  cursor: pointer; white-space: nowrap;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.event-filter-pill:hover  { border-color: var(--accent); color: var(--text); }
+.event-filter-pill.active { border-color: var(--accent); background: #fffbeb; color: var(--text); }
+
+.event-dropdown {
+  position: fixed;
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 850;
+  min-width: 180px; max-width: 260px;
+  overflow: hidden;
+}
+
+.event-drop-item {
+  display: block; width: 100%;
+  padding: 11px 16px; text-align: left;
+  background: none; border: none;
+  font-size: 14px; font-weight: 500; font-family: var(--font);
+  color: var(--text-muted); cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background .12s, color .12s;
+}
+.event-drop-item:last-child { border-bottom: none; }
+.event-drop-item:hover  { background: #f8fafc; color: var(--text); }
+.event-drop-item.active { color: var(--text); font-weight: 700; background: #fffbeb; }

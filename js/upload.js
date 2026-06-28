@@ -30,31 +30,24 @@ function maybeCloseUpload(e) {
 function resetUpload() {
   selectedFiles = []; selectedURLs = [];
   pendingLat = null;  pendingLng  = null;
-
   document.getElementById('file-input').value    = '';
   document.getElementById('caption').value       = '';
   document.getElementById('caption').placeholder = 'Add a caption… (optional)';
-
   ['opt-gps', 'opt-pin', 'opt-search'].forEach(function(id) {
     document.getElementById(id).classList.remove('active');
   });
-
   document.getElementById('search-panel').classList.remove('show');
   document.getElementById('search-input').value              = '';
   document.getElementById('search-results').classList.remove('show');
   document.getElementById('search-results').innerHTML        = '';
   document.getElementById('add-btn').disabled                = true;
   document.getElementById('add-btn').textContent             = 'Add to Map';
-
   var s = document.getElementById('loc-status');
   s.classList.remove('show', 'warn'); s.textContent = '';
-
   document.getElementById('dz-content').innerHTML =
-    '<div class="dz-icon">📷</div>' +
-    '<div class="dz-main">Choose photos</div>' +
+    '<div class="dz-icon">📷</div><div class="dz-main">Choose photos</div>' +
     '<div class="dz-sub">Tap here • select one or many</div>';
   document.getElementById('drop-zone').classList.remove('has-file');
-
   if (tempPinMarker) { map.removeLayer(tempPinMarker); tempPinMarker = null; }
   resetEventPicker();
 }
@@ -105,7 +98,7 @@ dropZone.addEventListener('drop', function(e) {
   if (files.length) handleFile(files);
 });
 
-// ── Location — GPS ───────────────────────────────────────
+// ── Location methods ─────────────────────────────────────
 function useGPS() {
   document.getElementById('opt-gps').classList.add('active');
   ['opt-pin', 'opt-search'].forEach(function(id) { document.getElementById(id).classList.remove('active'); });
@@ -125,7 +118,6 @@ function useGPS() {
   );
 }
 
-// ── Location — pin drop ──────────────────────────────────
 function startPin() {
   document.getElementById('opt-pin').classList.add('active');
   ['opt-gps', 'opt-search'].forEach(function(id) { document.getElementById(id).classList.remove('active'); });
@@ -166,7 +158,6 @@ function exitPinMode() {
   document.body.classList.remove('pin-mode');
 }
 
-// ── Location — search ────────────────────────────────────
 function selectSearch() {
   document.getElementById('opt-search').classList.add('active');
   ['opt-gps', 'opt-pin'].forEach(function(id) { document.getElementById(id).classList.remove('active'); });
@@ -189,7 +180,7 @@ function clearSearch() {
 
 var searchDebounce;
 function onSearchInput() {
-  var q       = document.getElementById('search-input').value.trim();
+  var q = document.getElementById('search-input').value.trim();
   var results = document.getElementById('search-results');
   clearTimeout(searchDebounce);
   if (!q) { results.classList.remove('show'); pendingLat = null; pendingLng = null; checkReady(); return; }
@@ -203,9 +194,7 @@ async function doSearch(q) {
   try {
     var res  = await fetch(
       'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) +
-      '&format=json&limit=6&addressdetails=1',
-      { headers: { 'Accept-Language': 'en' } }
-    );
+      '&format=json&limit=6&addressdetails=1', { headers: { 'Accept-Language': 'en' } });
     var data = await res.json();
     if (!data.length) { results.innerHTML = '<div class="search-message">No results found.</div>'; return; }
     results.innerHTML = '';
@@ -213,15 +202,12 @@ async function doSearch(q) {
       var parts = place.display_name.split(', ');
       var item  = document.createElement('div');
       item.className = 'search-result-item';
-      item.innerHTML =
-        '<div class="result-main">' + parts.slice(0,2).join(', ') + '</div>' +
+      item.innerHTML = '<div class="result-main">' + parts.slice(0,2).join(', ') + '</div>' +
         (parts.length > 2 ? '<div class="result-sub">' + parts.slice(2,5).join(', ') + '</div>' : '');
       item.onclick = function() { pickPlace(parseFloat(place.lat), parseFloat(place.lon), place.display_name); };
       results.appendChild(item);
     });
-  } catch(_) {
-    results.innerHTML = '<div class="search-message">Search failed. Check your connection.</div>';
-  }
+  } catch(_) { results.innerHTML = '<div class="search-message">Search failed. Check your connection.</div>'; }
 }
 
 function pickPlace(lat, lng, fullName) {
@@ -229,12 +215,10 @@ function pickPlace(lat, lng, fullName) {
   document.getElementById('search-input').value = fullName.split(', ').slice(0,3).join(', ');
   document.getElementById('search-results').classList.remove('show');
   if (tempPinMarker) map.removeLayer(tempPinMarker);
-  tempPinMarker = L.marker([lat, lng], {
-    icon: L.divIcon({
-      html: '<div style="width:18px;height:18px;background:#f59e0b;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4)"></div>',
-      className: '', iconSize: [18,18], iconAnchor: [9,9]
-    })
-  }).addTo(map);
+  tempPinMarker = L.marker([lat, lng], { icon: L.divIcon({
+    html: '<div style="width:18px;height:18px;background:#f59e0b;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.4)"></div>',
+    className: '', iconSize: [18,18], iconAnchor: [9,9]
+  })}).addTo(map);
   map.panTo([lat, lng], { animate: true, duration: 0.8 });
   showStatus('Location set: ' + fullName.split(', ').slice(0,2).join(', '), false);
   checkReady(); renderEventPicker();
@@ -252,10 +236,39 @@ function checkReady() {
   btn.textContent = (ready && n > 1) ? 'Add ' + n + ' Photos to Map' : 'Add to Map';
 }
 
-// ── Cloudinary upload ────────────────────────────────────
-// f_auto converts HEIC/HEIF → WebP or JPEG based on the browser.
-// Without this, photos from iPhones appear blank on non-Safari browsers.
-async function uploadToCloudinary(file) {
+// ── Image compression ─────────────────────────────────────
+// Uses the Canvas API to resize + re-encode as JPEG.
+// Note: browsers other than Safari cannot decode HEIC via Canvas —
+// HEIC files are passed through unchanged and let Cloudinary handle them
+// (Cloudinary accepts HEIC fine; the f_auto transform handles display).
+function compressImage(file, maxPx, quality) {
+  return new Promise(function(resolve, reject) {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function() {
+      var w = img.width, h = img.height;
+      if (w > maxPx || h > maxPx) {
+        if (w >= h) { h = Math.round(h * maxPx / w); w = maxPx; }
+        else        { w = Math.round(w * maxPx / h); h = maxPx; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(function(blob) {
+        if (!blob) { reject(new Error('Canvas toBlob failed')); return; }
+        var name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+        resolve(new File([blob], name, { type: 'image/jpeg' }));
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+}
+
+// ── Cloudinary upload (with auto-compression fallback) ────
+// f_auto converts HEIC/HEIF → WebP or JPEG for non-Safari browsers.
+async function doCloudinaryUpload(file) {
   var form = new FormData();
   form.append('file',          file);
   form.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
@@ -269,6 +282,41 @@ async function uploadToCloudinary(file) {
   return data.secure_url.replace('/upload/', '/upload/f_auto,q_auto/');
 }
 
+async function uploadToCloudinary(file) {
+  var isHeic = /\.(heic|heif)$/i.test(file.name) || /heic|heif/i.test(file.type || '');
+
+  // Pre-compress large non-HEIC files (> 8 MB) before the first attempt
+  if (!isHeic && file.size > 8 * 1024 * 1024) {
+    try {
+      var pre = await compressImage(file, 2048, 0.82);
+      console.log('Pre-compressed:', file.name,
+        (file.size/1024/1024).toFixed(1) + 'MB → ' + (pre.size/1024/1024).toFixed(1) + 'MB');
+      return await doCloudinaryUpload(pre);
+    } catch(preErr) {
+      console.warn('Pre-compression failed, trying original:', preErr.message);
+      // Fall through to try the original below
+    }
+  }
+
+  // First attempt: upload as-is
+  try {
+    return await doCloudinaryUpload(file);
+  } catch(firstErr) {
+    if (isHeic) throw firstErr; // Can't compress HEIC via Canvas — nothing more to try
+
+    // Second attempt: compress aggressively and retry
+    console.warn('Upload failed (' + firstErr.message + '), trying compressed version…');
+    try {
+      var retry = await compressImage(file, 1280, 0.65);
+      console.log('Retry-compressed:', file.name,
+        (file.size/1024/1024).toFixed(1) + 'MB → ' + (retry.size/1024/1024).toFixed(1) + 'MB');
+      return await doCloudinaryUpload(retry);
+    } catch(retryErr) {
+      throw new Error(file.name + ' failed after compression: ' + retryErr.message);
+    }
+  }
+}
+
 // ── Save to Firestore ────────────────────────────────────
 async function savePhoto() {
   if (!selectedFiles.length || pendingLat === null || !currentUser) return;
@@ -277,7 +325,7 @@ async function savePhoto() {
   var btn = document.getElementById('add-btn');
   btn.disabled = true; btn.textContent = n > 1 ? 'Uploading 0 of ' + n + '…' : 'Uploading…';
 
-  // 1. Resolve event — non-fatal
+  // 1. Resolve event (non-fatal)
   var eventInfo = null;
   try {
     eventInfo = await resolveSelectedEvent();
@@ -288,21 +336,19 @@ async function savePhoto() {
     console.warn('Event error (skipping event tag):', evtErr);
   }
 
-  // 2. Upload to Cloudinary — per-file error handling so one bad file
-  //    doesn't kill the entire batch.
-  var uploaded = 0;
-  var skipped  = 0;
+  // 2. Upload to Cloudinary — per-file error handling
+  var uploaded = 0, skipped = 0;
   var photoUrls = await Promise.all(selectedFiles.map(async function(file) {
     try {
       var url = await uploadToCloudinary(file);
       uploaded++;
-      if (n > 1) btn.textContent = 'Uploading ' + uploaded + ' of ' + n + '…';
+      if (n > 1) btn.textContent = 'Uploading ' + (uploaded + skipped) + ' of ' + n + '…';
       return url;
     } catch(fileErr) {
       skipped++;
-      console.warn('Skipped file:', file.name, fileErr.message);
+      console.warn('Skipped:', file.name, fileErr.message);
       if (n > 1) btn.textContent = 'Uploading ' + (uploaded + skipped) + ' of ' + n + '…';
-      return null; // null entries are filtered out below
+      return null;
     }
   }));
 
@@ -313,15 +359,16 @@ async function savePhoto() {
     btn.disabled = false; btn.textContent = n > 1 ? 'Add ' + n + ' Photos to Map' : 'Add to Map';
     return;
   }
-  if (skipped > 0) toast(skipped + ' file' + (skipped > 1 ? 's' : '') + ' skipped (too large or unsupported format).');
+  if (skipped > 0) {
+    toast(skipped + ' file' + (skipped > 1 ? 's' : '') + ' skipped — check the browser console for details.');
+  }
 
   // 3. Reverse-geocode
   var locName = pendingLat.toFixed(3) + ', ' + pendingLng.toFixed(3);
   try {
     var geo = await fetch(
       'https://nominatim.openstreetmap.org/reverse?lat=' + pendingLat + '&lon=' + pendingLng + '&format=json',
-      { headers: { 'Accept-Language': 'en' } }
-    );
+      { headers: { 'Accept-Language': 'en' } });
     if (geo.ok) {
       var d = await geo.json(), a = d.address;
       locName = a.city || a.town || a.village || a.county || a.state || locName;
@@ -330,10 +377,11 @@ async function savePhoto() {
   } catch(_) {}
 
   // 4. Build photo entries
+  var caption = document.getElementById('caption').value.trim();
   var photoEntries = photoUrls.map(function(url) {
     return {
       url:           url,
-      caption:       document.getElementById('caption').value.trim(),
+      caption:       caption,
       uploadedBy:    currentUser.uid,
       uploaderName:  currentUser.displayName || 'Someone',
       uploaderPhoto: currentUser.photoURL    || null,
@@ -341,7 +389,7 @@ async function savePhoto() {
     };
   });
 
-  // 5. Merge into nearby same-event location or create new
+  // 5. Merge into nearby same-event location, or create new
   var MERGE_RADIUS_M = 3000;
   var myEventId = eventInfo ? eventInfo.id : null;
   var nearby = locations.find(function(l) {
@@ -379,5 +427,5 @@ async function savePhoto() {
   if (tempPinMarker) { map.removeLayer(tempPinMarker); tempPinMarker = null; }
   resetUpload();
   map.flyTo([pendingLat, pendingLng], Math.max(map.getZoom(), 9), { duration: 1.4 });
-  toast(photoUrls.length + ' photo' + (photoUrls.length > 1 ? 's' : '') + ' added!');
+  toast(photoUrls.length + ' photo' + (photoUrls.length !== 1 ? 's' : '') + ' added!');
 }
