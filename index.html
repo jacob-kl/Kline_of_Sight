@@ -13,21 +13,15 @@
   <!-- Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- App styles -->
-  <link rel="stylesheet" href="css/base.css"/>
-  <link rel="stylesheet" href="css/layout.css"/>
-  <link rel="stylesheet" href="css/modals.css"/>
-  <link rel="stylesheet" href="css/upload.css"/>
-  <link rel="stylesheet" href="css/viewer.css"/>
-  <link rel="stylesheet" href="css/sharing.css"/>
-  <link rel="stylesheet" href="css/event-additions.css"/>
+  <!-- App styles (edit these files to change how the app looks) -->
+  <link rel="stylesheet" href="css/base.css"/>      <!-- colours, fonts, variables -->
+  <link rel="stylesheet" href="css/layout.css"/>    <!-- header, map, FAB, filter, toast -->
+  <link rel="stylesheet" href="css/modals.css"/>    <!-- shared overlay + sheet -->
+  <link rel="stylesheet" href="css/upload.css"/>    <!-- upload modal + search -->
+  <link rel="stylesheet" href="css/viewer.css"/>    <!-- photo grid + lightbox -->
+  <link rel="stylesheet" href="css/sharing.css"/>   <!-- sharing panel + invite codes -->
 </head>
 <body>
-
-  <!-- ── Globe (default view) ───────────────────────────── -->
-  <!-- Globe sits above the Leaflet map in z-order.         -->
-  <!-- "hidden" class fades it out when flat map is active. -->
-  <div id="globe-container"></div>
 
   <!-- ── Header ─────────────────────────────────────────── -->
   <div class="app-header">
@@ -46,18 +40,16 @@
     <button id="auth-btn" class="auth-btn" onclick="handleAuthClick()">Sign in</button>
   </div>
 
-  <!-- Filter row -->
+  <!-- Filter row — appears automatically once 2+ people upload -->
   <div id="filter-row" class="filter-row"></div>
 
-  <!-- Flat Leaflet map (hidden until user leaves globe) -->
   <div id="map"></div>
 
-  <!-- Map / Globe style switcher -->
+  <!-- Map style switcher -->
   <div class="map-style-switcher">
-    <button class="ms-btn active" data-style="globe"    onclick="setMapStyle('globe')">🌍 Globe</button>
-    <button class="ms-btn"        data-style="streets"  onclick="setMapStyle('streets')">Streets</button>
-    <button class="ms-btn"        data-style="topo"     onclick="setMapStyle('topo')">Atlas</button>
-    <button class="ms-btn"        data-style="satellite"onclick="setMapStyle('satellite')">Satellite</button>
+    <button class="ms-btn"        data-style="streets"   onclick="setMapStyle('streets')">Streets</button>
+    <button class="ms-btn active" data-style="topo"      onclick="setMapStyle('topo')">Atlas</button>
+    <button class="ms-btn"        data-style="satellite" onclick="setMapStyle('satellite')">Satellite</button>
   </div>
 
   <div id="pin-banner">📍 Tap anywhere on the map to place your photo</div>
@@ -142,7 +134,7 @@
 
       <div class="loc-status" id="loc-status"></div>
 
-      <!-- Event picker — shows after a location is set -->
+      <!-- Event picker -->
       <div class="event-section">
         <div class="loc-label">Which trip is this from? <span class="optional-tag">optional</span></div>
         <div class="event-picker-scroll" id="event-picker-options">
@@ -168,33 +160,64 @@
       <div class="sheet-handle"></div>
       <div class="upload-title">Sharing</div>
 
+      <!-- ① Your family -->
       <div class="sharing-section">
-        <div class="sharing-label">Your invite code</div>
-        <p class="sharing-desc">Give this to someone — they'll see your photos and you'll see theirs.</p>
-        <div id="invite-code-display" class="invite-code-display">
-          <div class="code-generating">Tap "New Code" to generate one.</div>
+        <div class="sharing-label">Your family</div>
+        <div id="family-list" class="family-list">
+          <!-- rendered by sharing.js -->
         </div>
-        <button class="btn-outline-sm" onclick="generateAndShowCode()" style="margin-top:10px">New Code</button>
       </div>
 
       <div class="sharing-divider"></div>
 
+      <!-- ② Add a person (full access) -->
       <div class="sharing-section">
-        <div class="sharing-label">Enter someone's code</div>
-        <p class="sharing-desc">Paste or type the code they sent you.</p>
-        <input type="text" id="connect-input" class="code-input-inline"
+        <div class="sharing-label">Add a person</div>
+        <p class="sharing-desc">Full access — you'll see all each other's photos permanently.</p>
+
+        <div id="person-code-display" class="invite-code-display">
+          <div class="code-generating">Tap "New Code" to generate one.</div>
+        </div>
+        <button class="btn-outline-sm" onclick="generatePersonCode()" style="margin-top:10px">New Code</button>
+
+        <div class="sharing-or">— or enter theirs —</div>
+        <input type="text" id="person-code-input" class="code-input-inline"
                placeholder="XXXXXX" maxlength="6"
                oninput="this.value=this.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase()"
-               onkeydown="if(event.key==='Enter') connectWithCode()"/>
-        <div id="connect-error" class="code-error" style="margin-top:6px"></div>
-        <button class="btn-add" id="btn-connect" onclick="connectWithCode()" style="margin-top:10px">Connect</button>
+               onkeydown="if(event.key='Enter') connectWithPersonCode()"/>
+        <div id="person-connect-error" class="code-error" style="margin-top:6px"></div>
+        <button class="btn-add" id="btn-person-connect"
+                onclick="connectWithPersonCode()" style="margin-top:10px">Connect</button>
       </div>
 
-      <div id="connections-section" class="sharing-section" style="display:none">
-        <div class="sharing-divider"></div>
-        <div class="sharing-label">Connected with</div>
-        <div id="connections-list"></div>
+      <div class="sharing-divider"></div>
+
+      <!-- ③ Share a trip (event-only access) -->
+      <div class="sharing-section">
+        <div class="sharing-label">Share a trip</div>
+        <p class="sharing-desc">Give someone access to just one event — they can view and add photos, but won't see anything else.</p>
+
+        <select id="share-event-select" class="share-event-select" onchange="onShareEventSelect()">
+          <option value="">Select a trip to share…</option>
+        </select>
+
+        <div id="trip-code-area" style="display:none">
+          <div id="trip-code-display" class="invite-code-display" style="margin-top:12px">
+            <div class="code-generating">Tap "New Trip Code" to generate one.</div>
+          </div>
+          <button class="btn-outline-sm" onclick="generateTripCode()" style="margin-top:10px">New Trip Code</button>
+        </div>
+
+        <div class="sharing-or">— or enter one —</div>
+        <input type="text" id="trip-code-input" class="code-input-inline"
+               placeholder="XXXXXX" maxlength="6"
+               oninput="this.value=this.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase()"
+               onkeydown="if(event.key='Enter') joinWithTripCode()"/>
+        <div id="trip-connect-error" class="code-error" style="margin-top:6px"></div>
+        <button class="btn-add" id="btn-trip-connect"
+                onclick="joinWithTripCode()" style="margin-top:10px">Join Trip</button>
       </div>
+
     </div>
   </div>
 
@@ -272,22 +295,20 @@
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
-  <!-- Globe.gl — 3D globe renderer. Falls back gracefully if blocked. -->
-  <script src="https://cdn.jsdelivr.net/npm/globe.gl/dist/globe.gl.min.js"></script>
 
-  <!-- Config: loaded from /api/config on Vercel (env vars), or config.js locally -->
+  <!-- Config: fill in your credentials here -->
   <script src="config.js"></script>
 
   <!-- App modules (order matters — firebase.js must be first) -->
-  <script src="js/firebase.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/map.js"></script>
-  <script src="js/connections.js"></script>
-  <script src="js/events.js"></script>
-  <script src="js/viewer.js"></script>
-  <script src="js/lightbox.js"></script>
-  <script src="js/upload.js"></script>
-  <script src="js/sharing.js"></script>
+  <script src="js/firebase.js"></script>     <!-- init db + auth -->
+  <script src="js/auth.js"></script>         <!-- sign in/out, FAB, keyboard, toast -->
+  <script src="js/map.js"></script>          <!-- tiles, markers, filter -->
+  <script src="js/connections.js"></script>  <!-- Firestore listeners, privacy -->
+  <script src="js/events.js"></script>       <!-- events: create, filter, add-to-event -->
+  <script src="js/viewer.js"></script>       <!-- photo grid -->
+  <script src="js/lightbox.js"></script>     <!-- full-screen viewer -->
+  <script src="js/upload.js"></script>       <!-- upload flow + Cloudinary -->
+  <script src="js/sharing.js"></script>      <!-- invite codes + connect -->
 
 </body>
 </html>

@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────
 // Events
 //
-// Reads:  db, currentUser, connectedUIDs, locations, map
+// Reads:  db, currentUser, connectedUIDs, accessibleEvents,
+//         locations, map, pendingLat, pendingLng
 // Writes: events, selectedEventId, selectedEventFilter
 // ─────────────────────────────────────────────────────────
 let events              = [];
@@ -29,15 +30,31 @@ function startEventsListener() {
       });
       renderEventPickerIfOpen();
       renderEventFilter();
+      // Refresh trip select in sharing panel if open
+      if (document.getElementById('sharing-overlay').classList.contains('open')) {
+        populateShareEventSelect();
+      }
     }, function(err) {
-      console.error('Events listener error:', err);
+      console.error('Events listener:', err);
     });
 }
 
-// ── Nearby events for the upload picker ──────────────────
+// ── All events visible to this user (owned + trip access) ─
+function allVisibleEvents() {
+  var result = events.slice();
+  // Add events from trip access that aren't already in the list
+  (accessibleEvents || []).forEach(function(a) {
+    if (!result.find(function(e) { return e.id === a.eventId; })) {
+      result.push({ id: a.eventId, name: a.eventName, date: '', createdBy: a.grantedBy, tripOnly: true });
+    }
+  });
+  return result;
+}
+
+// ── Nearby events (within 100 miles of pending location) ──
 function getNearbyEvents() {
   if (pendingLat === null || pendingLng === null) return [];
-  var RADIUS_M = 160934; // 100 miles
+  var RADIUS_M  = 160934;
   var nearbyIds = new Set();
   (locations || []).forEach(function(loc) {
     if (loc.eventId) {
@@ -47,7 +64,7 @@ function getNearbyEvents() {
       } catch(_) {}
     }
   });
-  return events.filter(function(evt) { return nearbyIds.has(evt.id); });
+  return allVisibleEvents().filter(function(evt) { return nearbyIds.has(evt.id); });
 }
 
 // ── Event picker (upload modal) ───────────────────────────
@@ -58,6 +75,7 @@ function renderEventPicker() {
 
   var hasLocation = (pendingLat !== null && pendingLng !== null);
   var nearbyEvts  = hasLocation ? getNearbyEvents() : [];
+  var all         = allVisibleEvents();
 
   container.appendChild(makeEventPill('daytoday', '📅 Day to Day', selectedEventId === 'daytoday'));
 
@@ -68,22 +86,21 @@ function renderEventPicker() {
     container.appendChild(hint);
   } else if (nearbyEvts.length > 0) {
     nearbyEvts.forEach(function(evt) {
-      var label = evt.name + (evt.date ? ' (' + evt.date + ')' : '');
+      var label = evt.name + (evt.date ? ' (' + evt.date + ')' : '') + (evt.tripOnly ? ' 🗺️' : '');
       container.appendChild(makeEventPill(evt.id, label, selectedEventId === evt.id));
     });
-  } else if (events.length > 0) {
+  } else if (all.length > 0) {
     var hint = document.createElement('span');
     hint.className   = 'event-picker-hint';
     hint.textContent = 'No events within 100 mi — showing all';
     container.appendChild(hint);
-    events.forEach(function(evt) {
-      var label = evt.name + (evt.date ? ' (' + evt.date + ')' : '');
+    all.forEach(function(evt) {
+      var label = evt.name + (evt.date ? ' (' + evt.date + ')' : '') + (evt.tripOnly ? ' 🗺️' : '');
       container.appendChild(makeEventPill(evt.id, label, selectedEventId === evt.id));
     });
   }
 
   container.appendChild(makeEventPill('new', '+ New Event', selectedEventId === 'new'));
-
   document.getElementById('new-event-form').style.display =
     selectedEventId === 'new' ? 'block' : 'none';
 }
@@ -133,7 +150,8 @@ async function resolveSelectedEvent() {
     });
     return { id: ref.id, name: newEventName, date: newEventDate || '' };
   }
-  var evt = events.find(function(e) { return e.id === selectedEventId; });
+  // Check both owned events and trip-access events
+  var evt = allVisibleEvents().find(function(e) { return e.id === selectedEventId; });
   return evt ? { id: evt.id, name: evt.name, date: evt.date || '' } : null;
 }
 
@@ -145,42 +163,32 @@ function isValidDate(d) {
   return m >= 1 && m <= 12 && y >= 2000 && y <= 2099;
 }
 
-// ── Event filter — single dropdown button in the filter row ─
-// Shows ONE "📅 Trips" button instead of many pills.
-// Tap to open a floating dropdown with All + each event.
+// ── Event filter (single dropdown in filter row) ──────────
 function renderEventFilter() {
   var row = document.getElementById('filter-row');
   if (!row) return;
-
-  // Remove old event control if it exists
   var old = row.querySelector('.event-filter-wrap');
   if (old) old.parentNode.removeChild(old);
 
-  // Collect events that actually have pins on the map
   var seen = new Map();
   (locations || []).forEach(function(loc) {
     if (loc.eventId && loc.eventName && !seen.has(loc.eventId))
       seen.set(loc.eventId, { id: loc.eventId, name: loc.eventName });
   });
-
   if (seen.size === 0) return;
 
-  // The button label reflects the current filter
   var currentName = selectedEventFilter
     ? (seen.has(selectedEventFilter) ? seen.get(selectedEventFilter).name : 'Trip')
     : 'All trips';
 
   var wrap = document.createElement('div');
   wrap.className = 'event-filter-wrap';
-
   var btn = document.createElement('button');
   btn.className   = 'event-filter-pill' + (selectedEventFilter ? ' active' : '');
   btn.textContent = '📅 ' + currentName + ' ▾';
   btn.onclick     = function(e) { e.stopPropagation(); toggleEventDropdown(seen, btn); };
   wrap.appendChild(btn);
   row.appendChild(wrap);
-
-  // Make sure the row is visible (it might be hidden if < 2 uploaders)
   if (row.style.display === 'none') row.style.display = 'flex';
 }
 
@@ -189,29 +197,24 @@ function toggleEventDropdown(eventsMap, anchorBtn) {
   if (existing) { existing.remove(); return; }
 
   var dropdown = document.createElement('div');
-  dropdown.id        = 'event-dropdown';
-  dropdown.className = 'event-dropdown';
+  dropdown.id = 'event-dropdown'; dropdown.className = 'event-dropdown';
 
   function makeItem(id, label) {
     var item = document.createElement('button');
     item.className   = 'event-drop-item' + (selectedEventFilter === id ? ' active' : '');
     item.textContent = label;
-    item.onclick     = function() { applyEventFilter(id, eventsMap); };
+    item.onclick     = function() { applyEventFilter(id); };
     return item;
   }
-
   dropdown.appendChild(makeItem(null, '📅 All trips'));
   eventsMap.forEach(function(evt) { dropdown.appendChild(makeItem(evt.id, evt.name)); });
 
   document.body.appendChild(dropdown);
-
-  // Position just below the filter row
   var row  = document.getElementById('filter-row');
   var rect = row.getBoundingClientRect();
   dropdown.style.top  = (rect.bottom + 6) + 'px';
   dropdown.style.left = Math.min(rect.left + 8, window.innerWidth - 220) + 'px';
 
-  // Close on any outside click
   setTimeout(function() {
     document.addEventListener('click', function close() {
       var dd = document.getElementById('event-dropdown');
@@ -221,12 +224,11 @@ function toggleEventDropdown(eventsMap, anchorBtn) {
   }, 10);
 }
 
-function applyEventFilter(id, eventsMap) {
+function applyEventFilter(id) {
   selectedEventFilter = id;
   var dd = document.getElementById('event-dropdown');
   if (dd) dd.remove();
-  renderEventFilter();
-  renderMarkers();
+  renderEventFilter(); renderMarkers();
 }
 
 function locationMatchesEventFilter(loc) {
@@ -239,13 +241,14 @@ function openAddEventOverlay(locId) {
   currentViewerLocId = locId;
   var list = document.getElementById('add-event-list');
   list.innerHTML = '';
-  if (!events.length) {
+  var visible = allVisibleEvents();
+  if (!visible.length) {
     list.innerHTML = '<p class="ae-empty">No events yet. Create one when uploading a photo.</p>';
   } else {
-    events.forEach(function(evt) {
+    visible.forEach(function(evt) {
       var item = document.createElement('button');
       item.className = 'ae-item';
-      item.innerHTML = '<span class="ae-name">' + evt.name + '</span>' +
+      item.innerHTML = '<span class="ae-name">' + evt.name + (evt.tripOnly ? ' 🗺️' : '') + '</span>' +
                        (evt.date ? '<span class="ae-date">' + evt.date + '</span>' : '');
       item.onclick = function() { assignLocationToEvent(locId, evt); };
       list.appendChild(item);
@@ -268,9 +271,7 @@ async function assignLocationToEvent(locId, evt) {
     });
     document.getElementById('add-event-overlay').classList.remove('open');
     toast(evt ? 'Added to ' + evt.name + '!' : 'Removed from event.');
-  } catch(err) {
-    console.error(err); toast('Something went wrong. Try again.');
-  }
+  } catch(err) { console.error(err); toast('Something went wrong. Try again.'); }
 }
 
 function maybeCloseAddEvent(e) {

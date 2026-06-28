@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────
-   Sharing panel sections
+   Sharing panel — three sections
 ───────────────────────────────────────────────────────── */
 .sharing-section  { margin-bottom: 4px; }
 
@@ -7,7 +7,7 @@
   font-size: 11px; font-weight: 700;
   color: var(--text-faint);
   text-transform: uppercase; letter-spacing: .07em;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .sharing-desc {
@@ -16,6 +16,42 @@
 }
 
 .sharing-divider { height: 1px; background: #f1f5f9; margin: 20px 0; }
+
+.sharing-or {
+  text-align: center; font-size: 12px; color: var(--text-faint);
+  margin: 14px 0;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Family list (your connections)
+───────────────────────────────────────────────────────── */
+.family-list  { margin-bottom: 12px; }
+.family-empty { font-size: 13px; color: var(--text-faint); line-height: 1.5; padding: 4px 0; }
+.family-loading { font-size: 13px; color: var(--text-faint); padding: 4px 0; }
+
+.family-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid #f1f5f9;
+}
+.family-item:last-child { border-bottom: none; }
+
+.family-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  overflow: hidden; flex-shrink: 0;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  display: flex; align-items: center; justify-content: center;
+}
+.family-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.family-initials {
+  color: var(--white); font-size: 15px; font-weight: 700;
+}
+
+.family-info { flex: 1; min-width: 0; }
+.family-name {
+  font-size: 15px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.family-access { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
 
 /* ─────────────────────────────────────────────────────────
    Invite code display
@@ -30,8 +66,7 @@
 .big-code {
   font-size: 36px; font-weight: 800;
   letter-spacing: .22em; color: var(--text);
-  margin-bottom: 4px;
-  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px; font-variant-numeric: tabular-nums;
 }
 
 .code-expires { font-size: 12px; color: var(--text-faint); margin-bottom: 14px; }
@@ -45,8 +80,7 @@
 .btn-copy:hover { opacity: .82; }
 
 .btn-outline-sm {
-  background: none;
-  border: 1.5px solid var(--border); color: #475569;
+  background: none; border: 1.5px solid var(--border); color: #475569;
   border-radius: 10px; padding: 9px 18px;
   font-size: 13px; font-weight: 600; font-family: var(--font);
   cursor: pointer; display: inline-block;
@@ -55,11 +89,10 @@
 .btn-outline-sm:hover { border-color: #94a3b8; background: var(--surface); }
 
 /* ─────────────────────────────────────────────────────────
-   Enter code input
+   Code input fields
 ───────────────────────────────────────────────────────── */
 .code-input-inline {
-  width: 100%;
-  font-family: var(--font);
+  width: 100%; font-family: var(--font);
   font-size: 22px; font-weight: 800;
   letter-spacing: .22em; text-align: center;
   border: 1.5px solid var(--border); border-radius: var(--radius-md);
@@ -75,22 +108,21 @@
 }
 
 /* ─────────────────────────────────────────────────────────
-   Connections list
+   Trip (event) sharing selector
 ───────────────────────────────────────────────────────── */
-.connection-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
+.share-event-select {
+  width: 100%;
+  border: 1.5px solid var(--border); border-radius: var(--radius-md);
+  padding: 11px 14px;
+  font-size: 14px; font-family: var(--font); color: var(--text);
+  background: var(--white); outline: none;
+  transition: border-color .15s; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
 }
-.connection-item:last-child { border-bottom: none; }
+.share-event-select:focus { border-color: var(--accent); }
 
-.conn-avatar {
-  width: 36px; height: 36px; border-radius: 50%;
-  overflow: hidden; flex-shrink: 0;
-  background: linear-gradient(135deg, #667eea, #764ba2);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--white); font-size: 14px; font-weight: 700;
-}
-.conn-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.conn-name { font-size: 14px; font-weight: 600; color: var(--text); }
+#trip-code-area { margin-top: 4px; }
