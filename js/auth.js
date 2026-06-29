@@ -201,34 +201,41 @@ window.addEventListener('load', function() {
 });
 
 // ── PWA install banner ────────────────────────────────────
+// Chrome on Android/desktop fires 'beforeinstallprompt' but only after
+// engagement heuristics are met (not on first visit). So we show the
+// banner on a timer regardless, and hook up the native install prompt
+// when/if it becomes available.
 var deferredInstallPrompt = null;
 
 window.addEventListener('beforeinstallprompt', function(e) {
-  e.preventDefault(); // stop the mini-infobar
-  deferredInstallPrompt = e;
-  // Small delay so it doesn't flash right at page load
-  setTimeout(showInstallBanner, 3000);
+  e.preventDefault();           // prevent mini-infobar
+  deferredInstallPrompt = e;    // save for installApp()
 });
 
-// On iOS, beforeinstallprompt never fires — show a hint in Safari
 window.addEventListener('load', function() {
+  // Already installed — never show
+  var standalone = window.matchMedia('(display-mode: standalone)').matches
+                   || navigator.standalone === true;
+  if (standalone) return;
+  // Already dismissed this session
+  if (localStorage.getItem('pwa-dismissed')) return;
+
   var isIos    = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  var isSafari = /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent);
-  var standalone = window.matchMedia('(display-mode: standalone)').matches;
-  if (isIos && isSafari && !standalone && !sessionStorage.getItem('install-dismissed')) {
-    setTimeout(function() {
-      var banner = document.getElementById('install-banner');
-      var text   = banner && banner.querySelector('.install-text');
-      var btn    = banner && banner.querySelector('.install-btn');
-      if (text) text.textContent = '📱 Tap Share → Add to Home Screen';
-      if (btn)  btn.style.display = 'none'; // iOS handles install via system UI
-      showInstallBanner();
-    }, 3000);
-  }
+  var isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|chrome/i.test(navigator.userAgent);
+
+  setTimeout(function() {
+    var banner = document.getElementById('install-banner');
+    if (!banner) return;
+    if (isIos && isSafari) {
+      // iOS can't use beforeinstallprompt — show manual instruction
+      banner.querySelector('.install-text').textContent = '📱 Tap Share then "Add to Home Screen"';
+      banner.querySelector('.install-btn').style.display = 'none';
+    }
+    showInstallBanner();
+  }, 4000);
 });
 
 function showInstallBanner() {
-  if (sessionStorage.getItem('install-dismissed')) return;
   var banner = document.getElementById('install-banner');
   if (banner) banner.classList.add('show');
 }
@@ -236,12 +243,14 @@ function showInstallBanner() {
 function dismissInstallBanner() {
   var banner = document.getElementById('install-banner');
   if (banner) banner.classList.remove('show');
-  sessionStorage.setItem('install-dismissed', '1');
+  localStorage.setItem('pwa-dismissed', '1'); // persists across sessions
 }
 
 async function installApp() {
-  if (!deferredInstallPrompt) return;
-  await deferredInstallPrompt.prompt();
-  deferredInstallPrompt = null;
+  if (deferredInstallPrompt) {
+    // Chrome — trigger native install dialog
+    await deferredInstallPrompt.prompt();
+    deferredInstallPrompt = null;
+  }
   dismissInstallBanner();
 }

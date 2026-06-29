@@ -88,6 +88,7 @@ function addAtmosphere() {
 }
 
 maplibreMap.on('load', function() {
+  try { maplibreMap.setProjection('globe'); } catch(e) {}
   addAtmosphere();
   renderMarkers();
 });

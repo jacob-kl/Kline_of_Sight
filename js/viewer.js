@@ -2,7 +2,6 @@
 // Viewer — photo grid for a single location
 // ─────────────────────────────────────────────────────────
 let currentLoc        = null;
-let currentViewerLocId = null;
 
 function openViewer(loc) {
   currentLoc         = loc;
