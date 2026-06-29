@@ -254,3 +254,60 @@ async function installApp() {
   }
   dismissInstallBanner();
 }
+
+// ── App menu (header dropdown) ────────────────────────────
+function toggleAppMenu(e) {
+  e.stopPropagation();
+  var menu = document.getElementById('app-menu');
+  var isOpen = menu.classList.toggle('open');
+
+  // Refresh install button state each time menu opens
+  if (isOpen) {
+    var installBtn = document.getElementById('menu-install');
+    if (installBtn) {
+      var standalone = window.matchMedia('(display-mode: standalone)').matches
+                       || navigator.standalone === true;
+      installBtn.style.display = standalone ? 'none' : '';
+      installBtn.querySelector('.menu-icon').textContent =
+        deferredInstallPrompt ? '📱' : '📱';
+    }
+  }
+
+  // Close when clicking outside
+  if (isOpen) {
+    setTimeout(function() {
+      document.addEventListener('click', closeAppMenu, { once: true });
+    }, 10);
+  }
+}
+
+function closeAppMenu() {
+  var menu = document.getElementById('app-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+async function menuInstallApp() {
+  closeAppMenu();
+  var isIos    = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|chrome/i.test(navigator.userAgent);
+
+  if (deferredInstallPrompt) {
+    await deferredInstallPrompt.prompt();
+    deferredInstallPrompt = null;
+  } else if (isIos && isSafari) {
+    // Show a brief toast with iOS instructions
+    toast('Tap the Share button (□↑) then "Add to Home Screen"');
+  } else {
+    toast('Open in Chrome or Safari to install the app.');
+  }
+}
+
+// Wire update detection to header menu item (in addition to bottom banner)
+function showUpdateReady() {
+  // Bottom banner
+  var banner = document.getElementById('update-banner');
+  if (banner) banner.classList.add('show');
+  // Header menu item
+  var menuUpdate = document.getElementById('menu-update');
+  if (menuUpdate) menuUpdate.style.display = '';
+}

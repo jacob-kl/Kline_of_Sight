@@ -34,7 +34,25 @@
   <!-- ── Header ─────────────────────────────────────────── -->
   <div class="app-header">
     <div class="logo-icon">📍</div>
-    <span>Kline of Sight</span>
+    <button class="app-title-btn" onclick="toggleAppMenu(event)" aria-haspopup="true">
+      Kline of Sight
+      <svg class="app-title-chevron" width="10" height="10" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>
+
+    <!-- App menu dropdown -->
+    <div id="app-menu" class="app-menu" role="menu">
+      <button id="menu-update" class="app-menu-item app-menu-update" style="display:none"
+              onclick="applyUpdate(); closeAppMenu()">
+        <span class="menu-icon">✨</span> Update available — Refresh
+      </button>
+      <button class="app-menu-item" id="menu-install" onclick="menuInstallApp()">
+        <span class="menu-icon">📱</span> Download app
+      </button>
+    </div>
+
     <div class="header-divider"></div>
     <button id="invite-btn" class="header-icon-btn" onclick="openSharingPanel()"
             title="Sharing" style="display:none">
@@ -408,14 +426,16 @@
             newWorker.addEventListener('statechange', function() {
               // 'installed' + existing controller = update ready
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                document.getElementById('update-banner').classList.add('show');
+                if (typeof showUpdateReady === 'function') showUpdateReady();
+              else document.getElementById('update-banner').classList.add('show');
               }
             });
           });
 
           // Also check: if a waiting SW already exists (e.g. user opened two tabs)
           if (reg.waiting && navigator.serviceWorker.controller) {
-            document.getElementById('update-banner').classList.add('show');
+            if (typeof showUpdateReady === 'function') showUpdateReady();
+              else document.getElementById('update-banner').classList.add('show');
           }
 
         }).catch(function(e) { console.warn('SW failed:', e); });
