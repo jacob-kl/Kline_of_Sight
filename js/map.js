@@ -181,19 +181,22 @@ function enterFlatMap(lat, lng, globeAlt) {
   if (!globeActive) return;
   globeActive = false;
 
-  // Position MapLibre BEFORE the globe fades out
-  var zoom = globeAlt ? altToZoom(globeAlt) : 5;
+  var zoom = globeAlt ? altToZoom(globeAlt) : 6;
+
+  // Switch to satellite FIRST — matches the globe imagery so the cross-fade
+  // looks like zooming into the same satellite view, not a style change.
+  setTileStyle('satellite');
   maplibreMap.resize();
-  if (lat !== undefined) maplibreMap.jumpTo({center:[lng, lat], zoom:zoom});
+  if (lat !== undefined) maplibreMap.jumpTo({ center: [lng, lat], zoom: zoom });
 
-  // Switch to atlas on landing (richest cartographic detail)
-  setTileStyle('topo');
+  // Small delay lets MapLibre render satellite tiles before the globe
+  // starts fading. Without this the map underneath is blank mid-fade.
+  setTimeout(function() {
+    document.getElementById('globe-container').classList.add('flat-mode');
+  }, 80);
 
-  // Fade the globe out
-  document.getElementById('globe-container').classList.add('flat-mode');
-
-  document.querySelectorAll('.ms-btn').forEach(function(b){
-    b.classList.toggle('active', b.dataset.style === 'topo');
+  document.querySelectorAll('.ms-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.style === 'satellite');
   });
 }
 

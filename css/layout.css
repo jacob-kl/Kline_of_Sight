@@ -448,7 +448,7 @@
   z-index: 50;
   background: #060d1f;
   opacity: 1;
-  transition: opacity 0.45s ease;
+  transition: opacity 0.35s ease;
   pointer-events: all;
 }
 #globe-container.flat-mode {
