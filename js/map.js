@@ -1,32 +1,25 @@
 // ─────────────────────────────────────────────────────────
 // Map
 //
-// Two views: 3D globe (globe.gl) and flat Leaflet map.
-// Transitions work like Google Earth:
-//   - Zoom INTO the globe → flat map appears at that location
-//   - Zoom OUT on flat map → globe returns, positioned correctly
-//   - Globe button → globe centered on where you were looking
+// Two views: 3D globe (globe.gl) and flat map (Leaflet).
+// Globe is the default. Clicking a pin, or zooming in very
+// close, transitions to Atlas flat map at that location.
 //
-// Globe altitude thresholds:
-//   GLOBE_TO_FLAT : zoom in past this → go flat
-//   FLAT_TO_GLOBE : Leaflet zoom level below this → go globe
+// CSS approach: #globe-container sits at z-index 50, above
+// the Leaflet map (z-index 1). To show flat map, the globe
+// container gets class "flat-mode" (display:none). The map
+// is always rendered so Leaflet tiles stay loaded.
+//
+// Reads:  locations, connectedUIDs, currentUser, selectedUids
+// Writes: map, clusterGroup, activeStyle, selectedUids,
+//         allUploaders, globeActive, globeInstance
 // ─────────────────────────────────────────────────────────
 let selectedUids  = new Set();
 let allUploaders  = new Map();
 let globeActive   = true;
 let globeInstance = null;
 
-// The lat/lng the user was last looking at on the flat map.
-// Used to snap the globe back to the right spot when returning.
-var lastFlatCenter = { lat: 40, lng: -98 };
-var lastFlatZoom   = 5;
-
-// Tuning constants
-var GLOBE_TO_FLAT_ALTITUDE = 0.20;  // zoom in past here on globe → flat map
-var FLAT_TO_GLOBE_ZOOM     = 2;     // zoom out below this on flat map → globe
-var GLOBE_RETURN_ALTITUDE  = 1.5;   // how far out the globe starts when returning
-
-// ── Flat map init ─────────────────────────────────────────
+// ── Flat map ──────────────────────────────────────────────
 const map = L.map('map', { center: [40, -96], zoom: 3, zoomControl: false });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
@@ -48,31 +41,10 @@ var tileSets = {
 var activeStyle = 'topo';
 tileSets[activeStyle].addTo(map);
 
-// Track flat map position continuously so we can return to it from globe
-map.on('move', function() {
-  var c = map.getCenter();
-  lastFlatCenter = { lat: c.lat, lng: c.lng };
-});
-map.on('zoom', function() {
-  lastFlatZoom = map.getZoom();
-});
-
-// Zoom out on flat map → return to globe
-map.on('zoomend', function() {
-  if (globeActive) return;
-  if (map.getZoom() <= FLAT_TO_GLOBE_ZOOM) {
-    var c = map.getCenter();
-    enterGlobe(c.lat, c.lng, map.getZoom());
-  }
-});
-
-// ── Globe (globe.gl) ──────────────────────────────────────
-var globeZoomTimer  = null; // debounce for globe→flat transition
-var latestGlobePov  = { lat: 40, lng: -98, altitude: 2 }; // last known globe POV
-
+// ── Globe ─────────────────────────────────────────────────
 function initGlobe() {
   if (!window.Globe) {
-    console.warn('globe.gl not loaded — staying on flat map.');
+    console.warn('globe.gl not loaded — falling back to flat map.');
     return;
   }
 
@@ -85,6 +57,7 @@ function initGlobe() {
     .atmosphereAltitude(0.18)
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    // HTML markers so we get real location-pin shapes
     .htmlElementsData([])
     .htmlLat(function(d) { return d.lat; })
     .htmlLng(function(d) { return d.lng; })
@@ -102,13 +75,14 @@ function initGlobe() {
         '</svg>';
       el.title = d.name + (d.count > 0 ? ' · ' + d.count + ' photo' + (d.count !== 1 ? 's' : '') : '');
       el.addEventListener('click', function() {
-        enterFlatMap(d.lat, d.lng, latestGlobePov.altitude);
+        enterFlatMap(d.lat, d.lng);
+        // Open the viewer for this location after transition settles
         setTimeout(function() {
           var match = locations.find(function(l) {
             return Math.abs(l.lat - d.lat) < 0.001 && Math.abs(l.lng - d.lng) < 0.001;
           });
           if (match) openViewer(match);
-        }, 700);
+        }, 650);
       });
       return el;
     })
@@ -118,25 +92,43 @@ function initGlobe() {
   globeInstance.controls().autoRotate      = true;
   globeInstance.controls().autoRotateSpeed = 0.25;
 
-  // Stop auto-rotate when user grabs
+  // Pause auto-rotate when user grabs the globe
   container.addEventListener('pointerdown', function() {
     if (globeInstance) globeInstance.controls().autoRotate = false;
   }, { passive: true });
 
-  // Track POV continuously for accurate flat-map positioning
-  globeInstance.onZoom(function(pov) {
-    latestGlobePov = pov;
-    if (!globeActive) return;
+  // Zoom detection using OrbitControls 'change' event.
+  // More reliable than onZoom() across globe.gl versions since
+  // OrbitControls is a stable Three.js primitive.
+  //
+  // Pattern: only START the timer when altitude first drops below the
+  // threshold. Don't reset it on every frame — that was the bug that
+  // prevented the transition from ever firing. Cancel the timer only
+  // if the user zooms BACK OUT above the threshold.
+  var zoomInTimer = null;
 
-    // Debounce: only transition if the user holds the zoom level for 500ms.
-    // This prevents accidental triggers during a fast zoom gesture.
-    clearTimeout(globeZoomTimer);
+  globeInstance.controls().addEventListener('change', function() {
+    if (!globeActive) return;
+    var pov = globeInstance.pointOfView();
+    if (!pov) return;
+
     if (pov.altitude < GLOBE_TO_FLAT_ALTITUDE) {
-      globeZoomTimer = setTimeout(function() {
-        if (globeActive && latestGlobePov.altitude < GLOBE_TO_FLAT_ALTITUDE) {
-          enterFlatMap(latestGlobePov.lat, latestGlobePov.lng, latestGlobePov.altitude);
-        }
-      }, 500);
+      // Below threshold — start the timer once and leave it alone
+      if (zoomInTimer === null) {
+        zoomInTimer = setTimeout(function() {
+          zoomInTimer = null;
+          var latest = globeInstance.pointOfView();
+          if (globeActive && latest && latest.altitude < GLOBE_TO_FLAT_ALTITUDE) {
+            enterFlatMap(latest.lat, latest.lng, latest.altitude);
+          }
+        }, 400);
+      }
+    } else {
+      // Back above threshold — user zoomed out, cancel pending transition
+      if (zoomInTimer !== null) {
+        clearTimeout(zoomInTimer);
+        zoomInTimer = null;
+      }
     }
   });
 }
@@ -153,31 +145,50 @@ function updateGlobeMarkers() {
   }));
 }
 
-// ── View switching ────────────────────────────────────────
+// ── Altitude ↔ zoom level conversion ─────────────────────
+// Makes globe→flat and flat→globe transitions position-aware
+// (land at the right zoom level, return at the right altitude).
+var GLOBE_TO_FLAT_ALTITUDE = 0.20; // zoom in past here → flat map
+var FLAT_TO_GLOBE_ZOOM     = 2;    // zoom out below this → globe
 
-// altitude → approximate Leaflet zoom level
-function altitudeToZoom(altitude) {
-  // rough logarithmic mapping:  alt 0.20 → zoom 6,  alt 0.10 → zoom 8
-  var zoom = Math.round(6 + Math.log2(GLOBE_TO_FLAT_ALTITUDE / altitude));
-  return Math.max(4, Math.min(10, zoom));
+function altitudeToZoom(alt) {
+  // alt 0.20 → zoom 6,  alt 0.10 → zoom 8,  alt 0.05 → zoom 10
+  return Math.max(4, Math.min(10, Math.round(6 + Math.log2(0.20 / alt) * 2)));
 }
 
-// Leaflet zoom level → approximate globe altitude
 function zoomToAltitude(zoom) {
-  // inverse of above
-  var alt = GLOBE_TO_FLAT_ALTITUDE * Math.pow(2, 6 - zoom);
-  return Math.max(0.2, Math.min(4, alt));
+  // inverse: zoom 6 → 0.20,  zoom 8 → 0.05
+  return Math.max(0.15, 0.20 * Math.pow(0.5, (zoom - 6) / 2));
 }
 
-function enterFlatMap(lat, lng, globeAltitude) {
+// ── Track flat map position (for returning to globe) ──────
+var lastFlatCenter = { lat: 40, lng: -98 };
+var lastFlatZoom   = 5;
+
+map.on('move', function() {
+  var c = map.getCenter();
+  lastFlatCenter = { lat: c.lat, lng: c.lng };
+  lastFlatZoom   = map.getZoom();
+});
+
+// Zoom out far enough on flat map → return to globe
+map.on('zoomend', function() {
+  if (globeActive) return;
+  if (map.getZoom() <= FLAT_TO_GLOBE_ZOOM) {
+    var c = map.getCenter();
+    enterGlobe(c.lat, c.lng, map.getZoom());
+  }
+});
+
+// ── View switching ────────────────────────────────────────
+function enterFlatMap(lat, lng, globeAlt) {
   if (!globeActive) return;
-  clearTimeout(globeZoomTimer);
   globeActive = false;
 
   document.getElementById('globe-container').classList.add('flat-mode');
 
-  // Calculate zoom from globe altitude so the view matches what was on-screen
-  var zoom = globeAltitude ? altitudeToZoom(globeAltitude) : 6;
+  // Pick a zoom level that matches the globe altitude so the view is continuous
+  var zoom = globeAlt ? altitudeToZoom(globeAlt) : 6;
 
   // Land on Atlas
   map.removeLayer(tileSets[activeStyle]);
@@ -190,15 +201,12 @@ function enterFlatMap(lat, lng, globeAltitude) {
 
   setTimeout(function() {
     map.invalidateSize();
-    if (lat !== undefined && lng !== undefined) {
-      map.setView([lat, lng], zoom, { animate: false });
-    }
+    if (lat !== undefined && lng !== undefined) map.setView([lat, lng], zoom, { animate: false });
   }, 60);
 }
 
 function enterGlobe(fromLat, fromLng, fromZoom) {
   globeActive = true;
-  clearTimeout(globeZoomTimer);
 
   document.getElementById('globe-container').classList.remove('flat-mode');
 
@@ -207,33 +215,28 @@ function enterGlobe(fromLat, fromLng, fromZoom) {
   if (gb) gb.classList.add('active');
 
   if (globeInstance) {
-    // Position globe where the user was looking, at an altitude that
-    // reflects the zoom level they were at on the flat map.
+    // Fly back to where the user was looking on the flat map
     var lat = (fromLat !== undefined) ? fromLat : lastFlatCenter.lat;
     var lng = (fromLng !== undefined) ? fromLng : lastFlatCenter.lng;
-    var alt = fromZoom ? zoomToAltitude(fromZoom) : GLOBE_RETURN_ALTITUDE;
+    var alt = fromZoom ? zoomToAltitude(fromZoom) : 1.5;
 
-    // Don't auto-rotate when returning from flat map — user is looking somewhere
-    globeInstance.controls().autoRotate = false;
+    globeInstance.controls().autoRotate = false; // don't spin — user is looking at something
     globeInstance.pointOfView({ lat: lat, lng: lng, altitude: alt }, 800);
-
     updateGlobeMarkers();
   }
 }
 
 function setMapStyle(style) {
   if (style === 'globe') {
-    if (globeActive) return; // already on globe
-    var c    = map.getCenter();
-    var zoom = map.getZoom();
-    enterGlobe(c.lat, c.lng, zoom);
+    if (globeActive) return;
+    // Return to globe centered on where the user was looking
+    var c = map.getCenter();
+    enterGlobe(c.lat, c.lng, map.getZoom());
     return;
   }
 
   if (globeActive) {
-    // Switching from globe to a specific flat style
     globeActive = false;
-    clearTimeout(globeZoomTimer);
     document.getElementById('globe-container').classList.add('flat-mode');
     setTimeout(function() { map.invalidateSize(); }, 60);
   }
@@ -248,20 +251,22 @@ function setMapStyle(style) {
   });
 }
 
-// ── Init after page load ──────────────────────────────────
+// ── Init globe after page loads ───────────────────────────
+// Brief delay lets Leaflet initialize with a visible container.
+// Globe then takes over as the default view.
 window.addEventListener('load', function() {
   setTimeout(function() {
     initGlobe();
+
     if (globeInstance) {
+      // Globe loaded — switch to globe view
       enterGlobe();
     } else {
-      // Fallback: stay on flat map, update switcher
+      // globe.gl didn't load — stay on flat Atlas map
       globeActive = false;
       document.getElementById('globe-container').classList.add('flat-mode');
-      var topoBtn = document.querySelector('.ms-btn[data-style="topo"]');
-      var globeBtn = document.querySelector('.ms-btn[data-style="globe"]');
-      if (topoBtn)  topoBtn.classList.add('active');
-      if (globeBtn) globeBtn.classList.remove('active');
+      document.querySelector('.ms-btn[data-style="topo"]').classList.add('active');
+      document.querySelector('.ms-btn[data-style="globe"]').classList.remove('active');
     }
   }, 400);
 });
@@ -339,8 +344,10 @@ function renderFilter() {
   allUploaders = buildUploaderMap();
   var row = document.getElementById('filter-row');
   if (allUploaders.size < 2) { row.style.display = 'none'; return; }
+
   row.style.display = 'flex';
   row.innerHTML = '<span class="filter-row-label">Show</span>';
+
   allUploaders.forEach(function(u, uid) {
     var active = selectedUids.size === 0 || selectedUids.has(uid);
     var btn = document.createElement('button');
