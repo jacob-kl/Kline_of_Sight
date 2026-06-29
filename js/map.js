@@ -41,51 +41,10 @@ var tileSets = {
 var activeStyle = 'topo';
 tileSets[activeStyle].addTo(map);
 
-// ── Globe tuning ─────────────────────────────────────────
-//
-// GLOBE_TO_FLAT_ALTITUDE: how zoomed-in the globe must be before
-//   switching to the flat map. Higher number = triggers sooner.
-//   0.60 = continent fills the screen (Google Earth-like feel).
-//
-// FLAT_TO_GLOBE_ZOOM: Leaflet zoom level below which we return to
-//   the globe when zooming out. 4 = large-country/continent view.
-var GLOBE_TO_FLAT_ALTITUDE = 0.60;
-var FLAT_TO_GLOBE_ZOOM     = 4;
-
-// Track where the user was looking on the flat map so the globe
-// can return to exactly the right spot and altitude.
-var lastFlatCenter = { lat: 40, lng: -98 };
-var lastFlatZoom   = 5;
-
-map.on('move', function() {
-  var c = map.getCenter();
-  lastFlatCenter = { lat: c.lat, lng: c.lng };
-  lastFlatZoom   = map.getZoom();
-});
-
-// Zoom OUT far enough on the flat map → return to globe
-map.on('zoomend', function() {
-  if (globeActive) return;
-  if (map.getZoom() <= FLAT_TO_GLOBE_ZOOM) {
-    var c = map.getCenter();
-    enterGlobe(c.lat, c.lng, map.getZoom());
-  }
-});
-
-// ── Altitude ↔ Leaflet zoom conversion ───────────────────
-// Keeps the "scale" consistent when crossing between views.
-function altitudeToZoom(alt) {
-  // alt 0.60 → zoom ~5,  alt 0.30 → zoom ~7,  alt 0.10 → zoom ~9
-  return Math.max(3, Math.min(10, Math.round(5 + Math.log2(0.60 / alt) * 2)));
-}
-function zoomToAltitude(zoom) {
-  return Math.max(0.15, 0.60 * Math.pow(0.5, (zoom - 5) / 2));
-}
-
-// ── Globe (globe.gl) ──────────────────────────────────────
+// ── Globe ─────────────────────────────────────────────────
 function initGlobe() {
   if (!window.Globe) {
-    console.warn('globe.gl not loaded — staying on flat map.');
+    console.warn('globe.gl not loaded — falling back to flat map.');
     return;
   }
 
@@ -98,6 +57,7 @@ function initGlobe() {
     .atmosphereAltitude(0.18)
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    // HTML markers so we get real location-pin shapes
     .htmlElementsData([])
     .htmlLat(function(d) { return d.lat; })
     .htmlLng(function(d) { return d.lng; })
@@ -115,8 +75,8 @@ function initGlobe() {
         '</svg>';
       el.title = d.name + (d.count > 0 ? ' · ' + d.count + ' photo' + (d.count !== 1 ? 's' : '') : '');
       el.addEventListener('click', function() {
-        var pov = globeInstance ? globeInstance.pointOfView() : null;
-        enterFlatMap(d.lat, d.lng, pov ? pov.altitude : null);
+        enterFlatMap(d.lat, d.lng);
+        // Open the viewer for this location after transition settles
         setTimeout(function() {
           var match = locations.find(function(l) {
             return Math.abs(l.lat - d.lat) < 0.001 && Math.abs(l.lng - d.lng) < 0.001;
@@ -132,16 +92,13 @@ function initGlobe() {
   globeInstance.controls().autoRotate      = true;
   globeInstance.controls().autoRotateSpeed = 0.25;
 
+  // Pause auto-rotate when user grabs the globe
   container.addEventListener('pointerdown', function() {
     if (globeInstance) globeInstance.controls().autoRotate = false;
   }, { passive: true });
 
-  // Use OrbitControls 'change' event — fires every animation frame during
-  // zoom/pan, works across all globe.gl versions.
-  //
-  // Key debounce pattern: START the timer once when we cross the threshold,
-  // don't reset it on every frame (that's the bug that prevented firing).
-  // Cancel it only if the user zooms back OUT above the threshold.
+  // OrbitControls 'change' fires every animation frame during zoom/pan.
+  // Start timer once below threshold; cancel only if user zooms back out.
   var zoomInTimer = null;
 
   globeInstance.controls().addEventListener('change', function() {
@@ -150,22 +107,22 @@ function initGlobe() {
     if (!pov) return;
 
     if (pov.altitude < GLOBE_TO_FLAT_ALTITUDE) {
-      if (zoomInTimer === null) {          // only start once
+      if (zoomInTimer === null) {
         zoomInTimer = setTimeout(function() {
           zoomInTimer = null;
           var latest = globeInstance.pointOfView();
           if (globeActive && latest && latest.altitude < GLOBE_TO_FLAT_ALTITUDE) {
             enterFlatMap(latest.lat, latest.lng, latest.altitude);
           }
-        }, 150);                           // 150ms — fast, no perceptible lag
+        }, 150);
       }
     } else {
-      if (zoomInTimer !== null) {          // zoomed back out — cancel
-        clearTimeout(zoomInTimer);
-        zoomInTimer = null;
-      }
+      if (zoomInTimer !== null) { clearTimeout(zoomInTimer); zoomInTimer = null; }
     }
   });
+
+  // Also fix the marker click to pass altitude
+  // (handled above in htmlElement click listener)
 }
 
 function updateGlobeMarkers() {
@@ -181,50 +138,88 @@ function updateGlobeMarkers() {
 }
 
 // ── View switching ────────────────────────────────────────
+// ── Altitude ↔ Leaflet zoom conversion ───────────────────
+// Keeps the view scale continuous when crossing between views.
+// alt 0.60 → zoom 5  (continent)
+// alt 0.30 → zoom 7  (country)
+// alt 0.10 → zoom 9  (region)
+var GLOBE_TO_FLAT_ALTITUDE = 0.60;
+var FLAT_TO_GLOBE_ZOOM     = 4;
+
+function altitudeToZoom(alt) {
+  return Math.max(3, Math.min(10, Math.round(5 + Math.log2(0.60 / alt) * 2)));
+}
+function zoomToAltitude(zoom) {
+  return Math.max(0.15, 0.60 * Math.pow(0.5, (zoom - 5) / 2));
+}
+
+// Track flat-map position so globe can return to the right place
+var lastFlatCenter = { lat: 40, lng: -98 };
+var lastFlatZoom   = 5;
+
+map.on('move', function() {
+  var c = map.getCenter();
+  lastFlatCenter = { lat: c.lat, lng: c.lng };
+  lastFlatZoom   = map.getZoom();
+});
+
+// Zoom out far enough → return to globe
+map.on('zoomend', function() {
+  if (globeActive) return;
+  if (map.getZoom() <= FLAT_TO_GLOBE_ZOOM) {
+    var c = map.getCenter();
+    enterGlobe(c.lat, c.lng, map.getZoom());
+  }
+});
+
 function enterFlatMap(lat, lng, globeAlt) {
   if (!globeActive) return;
   globeActive = false;
 
-  document.getElementById('globe-container').classList.add('flat-mode');
-
-  // Match zoom level to the globe altitude so the view looks continuous
+  // Position Leaflet BEFORE the globe fades out so the map is already
+  // in the right place when it becomes visible underneath.
   var zoom = globeAlt ? altitudeToZoom(globeAlt) : 5;
+  map.invalidateSize();
+  if (lat !== undefined && lng !== undefined) {
+    map.setView([lat, lng], zoom, { animate: false });
+  }
 
+  // Switch tile style
   map.removeLayer(tileSets[activeStyle]);
   activeStyle = 'topo';
   tileSets['topo'].addTo(map);
-
   document.querySelectorAll('.ms-btn').forEach(function(b) {
     b.classList.toggle('active', b.dataset.style === 'topo');
   });
 
-  setTimeout(function() {
-    map.invalidateSize();
-    if (lat !== undefined && lng !== undefined) {
-      map.setView([lat, lng], zoom, { animate: false });
-    }
-  }, 60);
+  // Fade the globe out (CSS opacity transition in layout.css handles smoothness)
+  document.getElementById('globe-container').classList.add('flat-mode');
 }
 
 function enterGlobe(fromLat, fromLng, fromZoom) {
   globeActive = true;
 
+  var lat = (fromLat !== undefined) ? fromLat : lastFlatCenter.lat;
+  var lng = (fromLng !== undefined) ? fromLng : lastFlatCenter.lng;
+  var alt = fromZoom ? zoomToAltitude(fromZoom) : 1.5;
+
+  if (globeInstance) {
+    // CRITICAL: Snap the globe to the target position INSTANTLY while it is
+    // still hidden (opacity 0 / flat-mode). This prevents the "wrong side of
+    // globe" jump — the globe will already be in the right place when it
+    // fades in, so the user only ever sees the correct location.
+    globeInstance.controls().autoRotate = false;
+    globeInstance.pointOfView({ lat: lat, lng: lng, altitude: alt }); // no animation
+
+    updateGlobeMarkers();
+  }
+
+  // Fade the globe in — CSS handles the smooth opacity transition
   document.getElementById('globe-container').classList.remove('flat-mode');
 
   document.querySelectorAll('.ms-btn').forEach(function(b) { b.classList.remove('active'); });
   var gb = document.querySelector('.ms-btn[data-style="globe"]');
   if (gb) gb.classList.add('active');
-
-  if (globeInstance) {
-    var lat = (fromLat !== undefined) ? fromLat : lastFlatCenter.lat;
-    var lng = (fromLng !== undefined) ? fromLng : lastFlatCenter.lng;
-    var alt = fromZoom ? zoomToAltitude(fromZoom) : 1.5;
-
-    // Don't auto-rotate when returning — user is looking at a specific place
-    globeInstance.controls().autoRotate = false;
-    globeInstance.pointOfView({ lat: lat, lng: lng, altitude: alt }, 800);
-    updateGlobeMarkers();
-  }
 }
 
 function setMapStyle(style) {
@@ -252,19 +247,21 @@ function setMapStyle(style) {
 }
 
 // ── Init globe after page loads ───────────────────────────
+// Brief delay lets Leaflet initialize with a visible container.
+// Globe then takes over as the default view.
 window.addEventListener('load', function() {
   setTimeout(function() {
     initGlobe();
 
     if (globeInstance) {
+      // Globe loaded — switch to globe view
       enterGlobe();
     } else {
+      // globe.gl didn't load — stay on flat Atlas map
       globeActive = false;
       document.getElementById('globe-container').classList.add('flat-mode');
-      var topoBtn  = document.querySelector('.ms-btn[data-style="topo"]');
-      var globeBtn = document.querySelector('.ms-btn[data-style="globe"]');
-      if (topoBtn)  topoBtn.classList.add('active');
-      if (globeBtn) globeBtn.classList.remove('active');
+      document.querySelector('.ms-btn[data-style="topo"]').classList.add('active');
+      document.querySelector('.ms-btn[data-style="globe"]').classList.remove('active');
     }
   }, 400);
 });
