@@ -361,10 +361,19 @@
   inset: 0;
   z-index: 50;
   background: #060d1f;
+  /* Opacity transition gives a smooth cross-fade instead of a hard jump */
+  opacity: 1;
+  transition: opacity 0.45s ease;
+  pointer-events: all;
 }
 
-/* Globe is hidden when flat map mode is active */
-#globe-container.flat-mode { display: none; }
+/* Globe fades out when flat map is active.
+   pointer-events:none lets clicks through to Leaflet while fading. */
+#globe-container.flat-mode {
+  opacity: 0;
+  pointer-events: none;
+  /* No display:none — keeping it rendered avoids the jump on return */
+}
 
 /* ─────────────────────────────────────────────────────────
    Event filter — single dropdown pill in the filter row
