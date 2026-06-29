@@ -11,7 +11,7 @@ let selectedUids    = new Set();
 let allUploaders    = new Map();
 var activeMarkers   = [];
 var lastRenderZoom  = -1;
-var activeStyleName = 'topo';
+var activeStyleName = 'satellite'; // satellite tiles look like a marble on the globe
 
 // ── Haversine distance ────────────────────────────────────
 // Keeps upload.js unchanged — same signature as Leaflet's map.distance()
@@ -61,14 +61,14 @@ var maplibreMap = new maplibregl.Map({
       satellite: tileSources.satellite
     },
     layers: [
-      { id: 'topo',      type: 'raster', source: 'topo',      layout: { visibility: 'visible' } },
+      { id: 'topo',      type: 'raster', source: 'topo',      layout: { visibility: 'none'    } },
       { id: 'streets',   type: 'raster', source: 'streets',   layout: { visibility: 'none'    } },
-      { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'none'    } }
+      { id: 'satellite', type: 'raster', source: 'satellite', layout: { visibility: 'visible' } }
     ]
   },
   projection: 'globe',  // MapLibre v4 seamless globe→flat
-  zoom:   2,
-  center: [-98, 38]
+  zoom:   1.5,          // starts zoomed out enough to see the full globe
+  center: [-30, 25]     // centered on the Atlantic so both Americas and Europe are visible
 });
 
 maplibreMap.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'bottom-left');
@@ -110,6 +110,14 @@ var map = {
 function setMapStyle(style) {
   if (style === 'globe') {
     maplibreMap.flyTo({ center: [-30, 25], zoom: 1.5, duration: 1200 });
+    // Satellite tiles make the globe look like a marble
+    if (activeStyleName !== 'satellite') {
+      if (maplibreMap.getLayer(activeStyleName))
+        maplibreMap.setLayoutProperty(activeStyleName, 'visibility', 'none');
+      if (maplibreMap.getLayer('satellite'))
+        maplibreMap.setLayoutProperty('satellite', 'visibility', 'visible');
+      activeStyleName = 'satellite';
+    }
     document.querySelectorAll('.ms-btn').forEach(function(b) {
       b.classList.toggle('active', b.dataset.style === 'globe');
     });

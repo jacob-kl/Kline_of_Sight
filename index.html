@@ -55,9 +55,9 @@
 
   <!-- Map style switcher -->
   <div class="map-style-switcher">
-    <button class="ms-btn"        data-style="globe"     onclick="setMapStyle('globe')">🌍 Globe</button>
+    <button class="ms-btn active" data-style="globe"     onclick="setMapStyle('globe')">🌍 Globe</button>
     <button class="ms-btn"        data-style="streets"   onclick="setMapStyle('streets')">Streets</button>
-    <button class="ms-btn active" data-style="topo"      onclick="setMapStyle('topo')">Atlas</button>
+    <button class="ms-btn"        data-style="topo"      onclick="setMapStyle('topo')">Atlas</button>
     <button class="ms-btn"        data-style="satellite" onclick="setMapStyle('satellite')">Satellite</button>
   </div>
 
@@ -400,5 +400,12 @@
       });
     }
   </script>
+
+  <!-- ── PWA install banner ─────────────────────────────── -->
+  <div id="install-banner" class="install-banner">
+    <span class="install-text">📱 Add to your home screen</span>
+    <button class="install-btn" onclick="installApp()">Install</button>
+    <button class="install-close" onclick="dismissInstallBanner()" aria-label="Dismiss">✕</button>
+  </div>
 </body>
 </html>

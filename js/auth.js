@@ -199,3 +199,49 @@ window.addEventListener('load', function() {
     document.getElementById('edit-event-overlay').classList.remove('open');
   });
 });
+
+// ── PWA install banner ────────────────────────────────────
+var deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault(); // stop the mini-infobar
+  deferredInstallPrompt = e;
+  // Small delay so it doesn't flash right at page load
+  setTimeout(showInstallBanner, 3000);
+});
+
+// On iOS, beforeinstallprompt never fires — show a hint in Safari
+window.addEventListener('load', function() {
+  var isIos    = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  var isSafari = /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent);
+  var standalone = window.matchMedia('(display-mode: standalone)').matches;
+  if (isIos && isSafari && !standalone && !sessionStorage.getItem('install-dismissed')) {
+    setTimeout(function() {
+      var banner = document.getElementById('install-banner');
+      var text   = banner && banner.querySelector('.install-text');
+      var btn    = banner && banner.querySelector('.install-btn');
+      if (text) text.textContent = '📱 Tap Share → Add to Home Screen';
+      if (btn)  btn.style.display = 'none'; // iOS handles install via system UI
+      showInstallBanner();
+    }, 3000);
+  }
+});
+
+function showInstallBanner() {
+  if (sessionStorage.getItem('install-dismissed')) return;
+  var banner = document.getElementById('install-banner');
+  if (banner) banner.classList.add('show');
+}
+
+function dismissInstallBanner() {
+  var banner = document.getElementById('install-banner');
+  if (banner) banner.classList.remove('show');
+  sessionStorage.setItem('install-dismissed', '1');
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  await deferredInstallPrompt.prompt();
+  deferredInstallPrompt = null;
+  dismissInstallBanner();
+}
