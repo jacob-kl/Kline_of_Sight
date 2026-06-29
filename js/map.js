@@ -1,25 +1,32 @@
 // ─────────────────────────────────────────────────────────
 // Map
 //
-// Two views: 3D globe (globe.gl) and flat map (Leaflet).
-// Globe is the default. Clicking a pin, or zooming in very
-// close, transitions to Atlas flat map at that location.
+// Two views: 3D globe (globe.gl) and flat Leaflet map.
+// Transitions work like Google Earth:
+//   - Zoom INTO the globe → flat map appears at that location
+//   - Zoom OUT on flat map → globe returns, positioned correctly
+//   - Globe button → globe centered on where you were looking
 //
-// CSS approach: #globe-container sits at z-index 50, above
-// the Leaflet map (z-index 1). To show flat map, the globe
-// container gets class "flat-mode" (display:none). The map
-// is always rendered so Leaflet tiles stay loaded.
-//
-// Reads:  locations, connectedUIDs, currentUser, selectedUids
-// Writes: map, clusterGroup, activeStyle, selectedUids,
-//         allUploaders, globeActive, globeInstance
+// Globe altitude thresholds:
+//   GLOBE_TO_FLAT : zoom in past this → go flat
+//   FLAT_TO_GLOBE : Leaflet zoom level below this → go globe
 // ─────────────────────────────────────────────────────────
 let selectedUids  = new Set();
 let allUploaders  = new Map();
 let globeActive   = true;
 let globeInstance = null;
 
-// ── Flat map ──────────────────────────────────────────────
+// The lat/lng the user was last looking at on the flat map.
+// Used to snap the globe back to the right spot when returning.
+var lastFlatCenter = { lat: 40, lng: -98 };
+var lastFlatZoom   = 5;
+
+// Tuning constants
+var GLOBE_TO_FLAT_ALTITUDE = 0.20;  // zoom in past here on globe → flat map
+var FLAT_TO_GLOBE_ZOOM     = 2;     // zoom out below this on flat map → globe
+var GLOBE_RETURN_ALTITUDE  = 1.5;   // how far out the globe starts when returning
+
+// ── Flat map init ─────────────────────────────────────────
 const map = L.map('map', { center: [40, -96], zoom: 3, zoomControl: false });
 L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
@@ -41,10 +48,31 @@ var tileSets = {
 var activeStyle = 'topo';
 tileSets[activeStyle].addTo(map);
 
-// ── Globe ─────────────────────────────────────────────────
+// Track flat map position continuously so we can return to it from globe
+map.on('move', function() {
+  var c = map.getCenter();
+  lastFlatCenter = { lat: c.lat, lng: c.lng };
+});
+map.on('zoom', function() {
+  lastFlatZoom = map.getZoom();
+});
+
+// Zoom out on flat map → return to globe
+map.on('zoomend', function() {
+  if (globeActive) return;
+  if (map.getZoom() <= FLAT_TO_GLOBE_ZOOM) {
+    var c = map.getCenter();
+    enterGlobe(c.lat, c.lng, map.getZoom());
+  }
+});
+
+// ── Globe (globe.gl) ──────────────────────────────────────
+var globeZoomTimer  = null; // debounce for globe→flat transition
+var latestGlobePov  = { lat: 40, lng: -98, altitude: 2 }; // last known globe POV
+
 function initGlobe() {
   if (!window.Globe) {
-    console.warn('globe.gl not loaded — falling back to flat map.');
+    console.warn('globe.gl not loaded — staying on flat map.');
     return;
   }
 
@@ -57,7 +85,6 @@ function initGlobe() {
     .atmosphereAltitude(0.18)
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-    // HTML markers so we get real location-pin shapes
     .htmlElementsData([])
     .htmlLat(function(d) { return d.lat; })
     .htmlLng(function(d) { return d.lng; })
@@ -75,14 +102,13 @@ function initGlobe() {
         '</svg>';
       el.title = d.name + (d.count > 0 ? ' · ' + d.count + ' photo' + (d.count !== 1 ? 's' : '') : '');
       el.addEventListener('click', function() {
-        enterFlatMap(d.lat, d.lng);
-        // Open the viewer for this location after transition settles
+        enterFlatMap(d.lat, d.lng, latestGlobePov.altitude);
         setTimeout(function() {
           var match = locations.find(function(l) {
             return Math.abs(l.lat - d.lat) < 0.001 && Math.abs(l.lng - d.lng) < 0.001;
           });
           if (match) openViewer(match);
-        }, 650);
+        }, 700);
       });
       return el;
     })
@@ -92,15 +118,25 @@ function initGlobe() {
   globeInstance.controls().autoRotate      = true;
   globeInstance.controls().autoRotateSpeed = 0.25;
 
-  // Pause auto-rotate when user grabs the globe
+  // Stop auto-rotate when user grabs
   container.addEventListener('pointerdown', function() {
     if (globeInstance) globeInstance.controls().autoRotate = false;
   }, { passive: true });
 
-  // Auto-transition to flat map when user zooms in close enough on the globe
+  // Track POV continuously for accurate flat-map positioning
   globeInstance.onZoom(function(pov) {
-    if (globeActive && pov.altitude < 0.22) {
-      enterFlatMap(pov.lat, pov.lng);
+    latestGlobePov = pov;
+    if (!globeActive) return;
+
+    // Debounce: only transition if the user holds the zoom level for 500ms.
+    // This prevents accidental triggers during a fast zoom gesture.
+    clearTimeout(globeZoomTimer);
+    if (pov.altitude < GLOBE_TO_FLAT_ALTITUDE) {
+      globeZoomTimer = setTimeout(function() {
+        if (globeActive && latestGlobePov.altitude < GLOBE_TO_FLAT_ALTITUDE) {
+          enterFlatMap(latestGlobePov.lat, latestGlobePov.lng, latestGlobePov.altitude);
+        }
+      }, 500);
     }
   });
 }
@@ -118,14 +154,32 @@ function updateGlobeMarkers() {
 }
 
 // ── View switching ────────────────────────────────────────
-function enterFlatMap(lat, lng) {
+
+// altitude → approximate Leaflet zoom level
+function altitudeToZoom(altitude) {
+  // rough logarithmic mapping:  alt 0.20 → zoom 6,  alt 0.10 → zoom 8
+  var zoom = Math.round(6 + Math.log2(GLOBE_TO_FLAT_ALTITUDE / altitude));
+  return Math.max(4, Math.min(10, zoom));
+}
+
+// Leaflet zoom level → approximate globe altitude
+function zoomToAltitude(zoom) {
+  // inverse of above
+  var alt = GLOBE_TO_FLAT_ALTITUDE * Math.pow(2, 6 - zoom);
+  return Math.max(0.2, Math.min(4, alt));
+}
+
+function enterFlatMap(lat, lng, globeAltitude) {
   if (!globeActive) return;
+  clearTimeout(globeZoomTimer);
   globeActive = false;
 
-  // Hide the globe, reveal the map behind it
   document.getElementById('globe-container').classList.add('flat-mode');
 
-  // Always land on Atlas — richest cartographic view
+  // Calculate zoom from globe altitude so the view matches what was on-screen
+  var zoom = globeAltitude ? altitudeToZoom(globeAltitude) : 6;
+
+  // Land on Atlas
   map.removeLayer(tileSets[activeStyle]);
   activeStyle = 'topo';
   tileSets['topo'].addTo(map);
@@ -136,34 +190,50 @@ function enterFlatMap(lat, lng) {
 
   setTimeout(function() {
     map.invalidateSize();
-    if (lat !== undefined && lng !== undefined) map.setView([lat, lng], 8);
+    if (lat !== undefined && lng !== undefined) {
+      map.setView([lat, lng], zoom, { animate: false });
+    }
   }, 60);
 }
 
-function enterGlobe() {
+function enterGlobe(fromLat, fromLng, fromZoom) {
   globeActive = true;
+  clearTimeout(globeZoomTimer);
 
-  // Remove flat-mode so the globe container shows again
   document.getElementById('globe-container').classList.remove('flat-mode');
 
-  document.querySelectorAll('.ms-btn').forEach(function(b) {
-    b.classList.remove('active');
-  });
+  document.querySelectorAll('.ms-btn').forEach(function(b) { b.classList.remove('active'); });
   var gb = document.querySelector('.ms-btn[data-style="globe"]');
   if (gb) gb.classList.add('active');
 
   if (globeInstance) {
-    globeInstance.controls().autoRotate = true;
+    // Position globe where the user was looking, at an altitude that
+    // reflects the zoom level they were at on the flat map.
+    var lat = (fromLat !== undefined) ? fromLat : lastFlatCenter.lat;
+    var lng = (fromLng !== undefined) ? fromLng : lastFlatCenter.lng;
+    var alt = fromZoom ? zoomToAltitude(fromZoom) : GLOBE_RETURN_ALTITUDE;
+
+    // Don't auto-rotate when returning from flat map — user is looking somewhere
+    globeInstance.controls().autoRotate = false;
+    globeInstance.pointOfView({ lat: lat, lng: lng, altitude: alt }, 800);
+
     updateGlobeMarkers();
   }
 }
 
 function setMapStyle(style) {
-  if (style === 'globe') { enterGlobe(); return; }
+  if (style === 'globe') {
+    if (globeActive) return; // already on globe
+    var c    = map.getCenter();
+    var zoom = map.getZoom();
+    enterGlobe(c.lat, c.lng, zoom);
+    return;
+  }
 
-  // If coming from globe, switch to flat first
   if (globeActive) {
+    // Switching from globe to a specific flat style
     globeActive = false;
+    clearTimeout(globeZoomTimer);
     document.getElementById('globe-container').classList.add('flat-mode');
     setTimeout(function() { map.invalidateSize(); }, 60);
   }
@@ -178,22 +248,20 @@ function setMapStyle(style) {
   });
 }
 
-// ── Init globe after page loads ───────────────────────────
-// Brief delay lets Leaflet initialize with a visible container.
-// Globe then takes over as the default view.
+// ── Init after page load ──────────────────────────────────
 window.addEventListener('load', function() {
   setTimeout(function() {
     initGlobe();
-
     if (globeInstance) {
-      // Globe loaded — switch to globe view
       enterGlobe();
     } else {
-      // globe.gl didn't load — stay on flat Atlas map
+      // Fallback: stay on flat map, update switcher
       globeActive = false;
       document.getElementById('globe-container').classList.add('flat-mode');
-      document.querySelector('.ms-btn[data-style="topo"]').classList.add('active');
-      document.querySelector('.ms-btn[data-style="globe"]').classList.remove('active');
+      var topoBtn = document.querySelector('.ms-btn[data-style="topo"]');
+      var globeBtn = document.querySelector('.ms-btn[data-style="globe"]');
+      if (topoBtn)  topoBtn.classList.add('active');
+      if (globeBtn) globeBtn.classList.remove('active');
     }
   }, 400);
 });
@@ -271,10 +339,8 @@ function renderFilter() {
   allUploaders = buildUploaderMap();
   var row = document.getElementById('filter-row');
   if (allUploaders.size < 2) { row.style.display = 'none'; return; }
-
   row.style.display = 'flex';
   row.innerHTML = '<span class="filter-row-label">Show</span>';
-
   allUploaders.forEach(function(u, uid) {
     var active = selectedUids.size === 0 || selectedUids.has(uid);
     var btn = document.createElement('button');
