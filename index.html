@@ -2,6 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#f59e0b"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Kline of Sight"/>
+  <link rel="apple-touch-icon" href="/icon-192.png"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Kline of Sight</title>
 
@@ -20,7 +28,6 @@
   <link rel="stylesheet" href="css/upload.css"/>    <!-- upload modal + search -->
   <link rel="stylesheet" href="css/viewer.css"/>    <!-- photo grid + lightbox -->
   <link rel="stylesheet" href="css/sharing.css"/>   <!-- sharing panel + invite codes -->
-  <link rel="stylesheet" href="css/event-additions.css"/>  <!-- event dropdown + private toggle -->
 </head>
 <body>
 
@@ -44,16 +51,12 @@
   <!-- Filter row — appears automatically once 2+ people upload -->
   <div id="filter-row" class="filter-row"></div>
 
-  <!-- Globe.gl renders here; sits above Leaflet at z-index 50 -->
-  <div id="globe-container"></div>
-
   <div id="map"></div>
 
   <!-- Map style switcher -->
   <div class="map-style-switcher">
-    <button class="ms-btn active" data-style="globe"     onclick="setMapStyle('globe')">🌍 Globe</button>
     <button class="ms-btn"        data-style="streets"   onclick="setMapStyle('streets')">Streets</button>
-    <button class="ms-btn"        data-style="topo"      onclick="setMapStyle('topo')">Atlas</button>
+    <button class="ms-btn active" data-style="topo"      onclick="setMapStyle('topo')">Atlas</button>
     <button class="ms-btn"        data-style="satellite" onclick="setMapStyle('satellite')">Satellite</button>
   </div>
 
@@ -274,6 +277,26 @@
     </div>
   </div>
 
+  <!-- ── Edit / Delete event overlay ─────────────────── -->
+  <div class="overlay" id="edit-event-overlay" onclick="maybeCloseEditEvent(event)">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="upload-title">Edit Event</div>
+      <div class="upload-field">
+        <label class="upload-label">Event name</label>
+        <input type="text" id="edit-event-name" class="upload-input"
+               placeholder="Event name" maxlength="80"/>
+      </div>
+      <div class="upload-field">
+        <label class="upload-label">Date <span class="optional-tag">(optional)</span></label>
+        <input type="text" id="edit-event-date" class="upload-input"
+               placeholder="MM/YYYY" maxlength="7"/>
+      </div>
+      <button class="btn-add" id="btn-save-event-edit" onclick="saveEditEvent()" style="margin-bottom:10px">Save</button>
+      <button class="btn-delete" onclick="deleteEditEvent()">Delete this event</button>
+    </div>
+  </div>
+
   <!-- ── Lightbox ───────────────────────────────────────── -->
   <div id="lightbox" onclick="lightboxBackdropClick(event)">
 
@@ -349,8 +372,9 @@
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.3.0/firebase-auth-compat.js"></script>
 
-  <!-- Globe.gl — 3D globe renderer (falls back gracefully if blocked) -->
-  <script src="https://cdn.jsdelivr.net/npm/globe.gl/dist/globe.gl.min.js"></script>
+  <!-- MapLibre GL JS — open-source globe+map, no API key needed -->
+  <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
   <!-- Config: fill in your credentials here -->
   <script src="config.js"></script>
@@ -366,5 +390,14 @@
   <script src="js/upload.js"></script>       <!-- upload flow + Cloudinary -->
   <script src="js/sharing.js"></script>      <!-- invite codes + connect -->
 
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function(r) { console.log('SW registered:', r.scope); })
+          .catch(function(e) { console.warn('SW failed:', e); });
+      });
+    }
+  </script>
 </body>
 </html>

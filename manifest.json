@@ -1,0 +1,14 @@
+{
+  "name": "Kline of Sight",
+  "short_name": "Kline of Sight",
+  "description": "Family travel photo map",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060d1f",
+  "theme_color": "#f59e0b",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

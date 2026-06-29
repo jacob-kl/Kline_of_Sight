@@ -350,30 +350,7 @@
 .event-filter-btn:hover  { border-color: var(--accent); color: var(--text); }
 .event-filter-btn.active { border-color: var(--accent); background: #fffbeb; color: var(--text); }
 
-/* ─────────────────────────────────────────────────────────
-   Globe container  (globe.gl renders here)
-   z-index 50 = above the Leaflet map (z-index 1) but
-   below all UI controls (header/FAB/modals are 800-4000).
-   When flat map is active, globe gets .flat-mode and hides.
-───────────────────────────────────────────────────────── */
-#globe-container {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: #060d1f;
-  /* Opacity transition gives a smooth cross-fade instead of a hard jump */
-  opacity: 1;
-  transition: opacity 0.45s ease;
-  pointer-events: all;
-}
-
-/* Globe fades out when flat map is active.
-   pointer-events:none lets clicks through to Leaflet while fading. */
-#globe-container.flat-mode {
-  opacity: 0;
-  pointer-events: none;
-  /* No display:none — keeping it rendered avoids the jump on return */
-}
+/* Globe handled by Mapbox GL JS — #map is the only container */
 
 /* ─────────────────────────────────────────────────────────
    Event filter — single dropdown pill in the filter row
@@ -416,3 +393,6 @@
 .event-drop-item:last-child { border-bottom: none; }
 .event-drop-item:hover  { background: #f8fafc; color: var(--text); }
 .event-drop-item.active { color: var(--text); font-weight: 700; background: #fffbeb; }
+
+/* Mapbox canvas fills container */
+.mapboxgl-canvas { display: block; }

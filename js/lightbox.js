@@ -1,244 +1,204 @@
 // ─────────────────────────────────────────────────────────
 // Lightbox
 //
-// Full-screen photo viewer. Supports:
-//   - prev / next navigation (arrows + keyboard)
-//   - pinch-to-zoom on mobile, click/button zoom on desktop
-//   - save to device (download)
-//   - delete (owner only, updates Firestore)
+// Full-screen photo viewer with pinch-zoom, nav, save,
+// share (Web Share API), and delete.
 //
-// Reads:  currentUser, db
-// Writes: lbPhotos, lbIndex, lbLoc, lbZoom, lbZoomScale
+// Reads:  db, currentUser, locations
+// Writes: lbPhotos, lbIndex, lbLoc, lbZoom
 // ─────────────────────────────────────────────────────────
-let lbPhotos    = [];
-let lbIndex     = 0;
-let lbLoc       = null;
-let lbZoom      = false;
-let lbZoomScale = 1.0;  // ranges 1–4; button snaps to 1.5x
+let lbPhotos = [];
+let lbIndex  = 0;
+let lbLoc    = null;
+let lbZoom   = false;
+let lbScale  = 1;
 
-var lbPinchStartDist  = 0;
-var lbPinchStartScale = 1;
-var lbPinchInit       = false;
-
-// ── Open / close ─────────────────────────────────────────
-function openLightbox(loc, index) {
-  lbLoc    = loc;
-  lbPhotos = loc.photos.slice();
-  lbIndex  = index;
-  document.getElementById('lightbox').classList.add('open');
+// ── Open / close ──────────────────────────────────────────
+function openLightbox(photos, startIndex, loc) {
+  lbPhotos = photos; lbIndex = startIndex || 0; lbLoc = loc;
+  lbZoom = false; lbScale = 1;
   renderLightbox();
-  if (!lbPinchInit) { initPinchZoom(); lbPinchInit = true; }
+  document.getElementById('lightbox').classList.add('open');
 }
 
 function closeLightbox() {
-  resetLightboxZoom();
   document.getElementById('lightbox').classList.remove('open');
+  lbZoom = false; lbScale = 1;
 }
 
-function lightboxBackdropClick(e) {
-  if (e.target === document.getElementById('lightbox')) closeLightbox();
-}
-
-// ── Render current photo ─────────────────────────────────
+// ── Render ────────────────────────────────────────────────
 function renderLightbox() {
   var photo = lbPhotos[lbIndex];
   if (!photo) return;
 
-  resetLightboxZoom();
+  var img = document.getElementById('lb-img');
+  img.src = photo.url;
+  img.style.transform = 'scale(1)';
+  lbScale = 1; lbZoom = false;
 
-  var img  = document.getElementById('lightbox-img');
-  var wrap = document.getElementById('lb-image-wrap');
-  img.src  = photo.url;
-  wrap.scrollTop = 0; wrap.scrollLeft = 0;
+  document.getElementById('lb-caption').textContent =
+    photo.caption || (lbLoc ? lbLoc.name : '');
+  document.getElementById('lb-uploader').textContent =
+    photo.uploaderName ? 'Added by ' + photo.uploaderName : '';
+  document.getElementById('lb-counter').textContent =
+    lbPhotos.length > 1 ? (lbIndex+1) + ' / ' + lbPhotos.length : '';
 
-  // Caption
-  var parts = [];
-  if (photo.uploaderName) parts.push(photo.uploaderName);
-  if (photo.caption)      parts.push(photo.caption);
-  var cap = document.getElementById('lb-caption');
-  cap.textContent   = parts.join(' · ');
-  cap.style.display = parts.length ? 'block' : 'none';
+  // Nav arrows
+  var prev = document.getElementById('lb-prev');
+  var next = document.getElementById('lb-next');
+  prev.style.display = lbIndex > 0 ? 'flex' : 'none';
+  next.style.display = lbIndex < lbPhotos.length-1 ? 'flex' : 'none';
 
-  // Counter
-  document.getElementById('lb-counter').textContent = (lbIndex + 1) + ' / ' + lbPhotos.length;
-
-  // Arrows
-  document.getElementById('lb-prev').classList.toggle('hidden', lbIndex === 0);
-  document.getElementById('lb-next').classList.toggle('hidden', lbIndex === lbPhotos.length - 1);
-
-  // Delete — always reset here so it's never stuck on "Deleting…"
-  var delBtn   = document.getElementById('lb-delete');
-  var delLabel = document.getElementById('lb-delete-label');
-  delBtn.disabled      = false;
-  delLabel.textContent = 'Delete';
-  delBtn.style.display = (currentUser && photo.uploadedBy === currentUser.uid) ? 'flex' : 'none';
+  // Delete button — only show if owner
+  var delBtn = document.getElementById('lb-delete');
+  if (currentUser && photo.uploadedBy === currentUser.uid) {
+    delBtn.style.display = 'flex';
+    delBtn.textContent = 'Delete';
+    delBtn.onclick = deleteLightboxPhoto;
+  } else {
+    delBtn.style.display = 'none';
+  }
 }
 
-// ── Navigation ───────────────────────────────────────────
 function lightboxNav(dir, e) {
-  if (e && e.stopPropagation) e.stopPropagation();
+  if (e) e.stopPropagation();
   var next = lbIndex + dir;
   if (next < 0 || next >= lbPhotos.length) return;
-  lbIndex = next;
-  renderLightbox();
+  lbIndex = next; renderLightbox();
 }
 
-// ── Zoom ─────────────────────────────────────────────────
-function resetLightboxZoom() {
-  lbZoom      = false;
-  lbZoomScale = 1.0;
-  applyLightboxZoom();
-}
+// ── Pinch zoom ────────────────────────────────────────────
+var pinchStartDist = 0;
+var pinchStartScale = 1;
 
-function applyLightboxZoom() {
-  var img   = document.getElementById('lightbox-img');
-  var wrap  = document.getElementById('lb-image-wrap');
-  var label = document.getElementById('lb-zoom-label');
-  var btn   = document.getElementById('lb-zoom-btn');
-  if (!img) return;
-
-  if (lbZoomScale <= 1) {
-    img.style.transform = '';
-    img.classList.remove('zoomed');
-    img.style.cursor    = 'zoom-in';
-    if (wrap) { wrap.scrollTop = 0; wrap.scrollLeft = 0; }
-  } else {
-    img.style.transform = 'scale(' + lbZoomScale.toFixed(2) + ')';
-    img.classList.add('zoomed');
-    img.style.cursor    = 'zoom-out';
+document.getElementById('lb-img').addEventListener('touchstart', function(e) {
+  if (e.touches.length === 2) {
+    pinchStartDist  = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    pinchStartScale = lbScale;
   }
+}, { passive: true });
 
-  if (label) label.textContent = (lbZoomScale > 1) ? 'Zoom out' : 'Zoom';
-  if (btn)   btn.title         = (lbZoomScale > 1) ? 'Zoom out' : 'Zoom in';
-}
+document.getElementById('lb-img').addEventListener('touchmove', function(e) {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    var dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    lbScale = Math.min(4, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
+    e.currentTarget.style.transform = 'scale(' + lbScale + ')';
+    lbZoom = lbScale > 1.05;
+  }
+}, { passive: false });
 
-// Button / click toggle — 1.5x is comfortable; not too aggressive
 function toggleZoom(e) {
-  if (e && e.stopPropagation) e.stopPropagation();
-
+  e.stopPropagation();
+  var img = document.getElementById('lb-img');
   if (lbZoom) {
-    lbZoom      = false;
-    lbZoomScale = 1.0;
-    applyLightboxZoom();
+    lbScale = 1; lbZoom = false;
+    img.style.transition = 'transform .25s';
+    img.style.transform  = 'scale(1)';
+    setTimeout(function() { img.style.transition = ''; }, 260);
   } else {
-    lbZoom      = true;
-    lbZoomScale = 1.5;
-    applyLightboxZoom();
-    // Center the scroll position after transition
-    setTimeout(function() {
-      var wrap = document.getElementById('lb-image-wrap');
-      if (wrap) {
-        wrap.scrollLeft = (wrap.scrollWidth  - wrap.clientWidth)  / 2;
-        wrap.scrollTop  = (wrap.scrollHeight - wrap.clientHeight) / 2;
-      }
-    }, 260);
+    lbScale = 2; lbZoom = true;
+    img.style.transition = 'transform .25s';
+    img.style.transform  = 'scale(2)';
+    setTimeout(function() { img.style.transition = ''; }, 260);
   }
 }
 
-// ── Pinch-to-zoom (mobile) ───────────────────────────────
-function getTouchDist(touches) {
-  var dx = touches[0].clientX - touches[1].clientX;
-  var dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
+// ── Swipe to close ────────────────────────────────────────
+(function() {
+  var lb = document.getElementById('lightbox');
+  var startY = 0;
+  lb.addEventListener('touchstart', function(e) {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  lb.addEventListener('touchend', function(e) {
+    if (lbZoom) return;
+    var dy = e.changedTouches[0].clientY - startY;
+    if (dy > 90) closeLightbox();
+  }, { passive: true });
+})();
+
+// ── Save / Share / Delete ─────────────────────────────────
+async function saveLightboxPhoto() {
+  var photo = lbPhotos[lbIndex];
+  if (!photo) return;
+  var btn = document.getElementById('lb-save');
+  btn.textContent = 'Saving…';
+  try {
+    var res   = await fetch(photo.url);
+    var blob  = await res.blob();
+    var a     = document.createElement('a');
+    a.href    = URL.createObjectURL(blob);
+    a.download= (lbLoc ? lbLoc.name.replace(/[^a-z0-9]/gi,'_') : 'photo') + '.jpg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    btn.textContent = 'Saved!';
+  } catch(err) {
+    btn.textContent = 'Failed';
+  }
+  setTimeout(function() { btn.textContent = 'Save'; }, 2500);
 }
 
-function initPinchZoom() {
-  var wrap = document.getElementById('lb-image-wrap');
-  if (!wrap) return;
-
-  wrap.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      lbPinchStartDist  = getTouchDist(e.touches);
-      lbPinchStartScale = lbZoomScale;
-    }
-  }, { passive: false });
-
-  wrap.addEventListener('touchmove', function(e) {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      var dist    = getTouchDist(e.touches);
-      var newScale = (dist / lbPinchStartDist) * lbPinchStartScale;
-      lbZoomScale = Math.max(1, Math.min(4, newScale));
-      lbZoom      = lbZoomScale > 1;
-      applyLightboxZoom();
-    }
-  }, { passive: false });
-
-  wrap.addEventListener('touchend', function() {
-    // Snap back to 1x if barely zoomed — avoids getting stuck at 1.05x
-    if (lbZoomScale < 1.15) {
-      lbZoom      = false;
-      lbZoomScale = 1.0;
-      applyLightboxZoom();
-    }
-  });
-}
-
-// ── Save to device ───────────────────────────────────────
-async function downloadCurrentPhoto() {
-  var photo    = lbPhotos[lbIndex];
+async function shareLightboxPhoto() {
+  var photo = lbPhotos[lbIndex];
   if (!photo) return;
 
-  var saveBtn  = document.querySelector('.lb-save');
-  var origHTML = saveBtn.innerHTML;
-  saveBtn.innerHTML = 'Saving…';
-  saveBtn.disabled  = true;
-
-  try {
-    var res  = await fetch(photo.url);
-    var blob = await res.blob();
-    var url  = URL.createObjectURL(blob);
-    var a    = document.createElement('a');
-    a.href     = url;
-    a.download = (lbLoc.name || 'photo').replace(/[^a-z0-9]/gi, '-').toLowerCase() +
-                 '-' + (lbIndex + 1) + '.' + (blob.type.split('/')[1] || 'jpg');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('Photo saved!');
-  } catch(err) {
-    window.open(photo.url, '_blank');
-    toast('Opening photo — long-press to save.');
-  } finally {
-    saveBtn.innerHTML = origHTML;
-    saveBtn.disabled  = false;
+  // Prefer native share (mobile) — fall back to clipboard copy
+  if (navigator.share) {
+    try {
+      var res  = await fetch(photo.url);
+      var blob = await res.blob();
+      var file = new File([blob], 'photo.jpg', { type: blob.type });
+      var data = { title: lbLoc ? lbLoc.name : 'Kline of Sight' };
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        data.files = [file];
+      } else {
+        data.url = photo.url;
+      }
+      await navigator.share(data);
+      return;
+    } catch(err) {
+      if (err.name === 'AbortError') return; // user cancelled
+    }
   }
+  // Fallback: copy photo URL
+  navigator.clipboard && navigator.clipboard.writeText(photo.url)
+    .then(function() { toast('Link copied!'); })
+    .catch(function() { toast('Copy the URL from your browser address bar.'); });
 }
 
-// ── Delete ───────────────────────────────────────────────
-async function deleteCurrentPhoto() {
+async function deleteLightboxPhoto() {
   var photo = lbPhotos[lbIndex];
-  if (!photo || !currentUser || photo.uploadedBy !== currentUser.uid) return;
-  if (!confirm('Delete this photo?')) return;
+  if (!photo || !lbLoc) return;
+  if (!confirm('Delete this photo? This cannot be undone.')) return;
 
-  var delBtn   = document.getElementById('lb-delete');
-  var delLabel = document.getElementById('lb-delete-label');
-  delLabel.textContent = 'Deleting…';
-  delBtn.disabled      = true;
+  var btn = document.getElementById('lb-delete');
+  btn.textContent = 'Deleting…'; btn.disabled = true;
 
   try {
-    var locDoc = await db.collection('locations').doc(lbLoc.id).get();
-    var fresh  = (locDoc.data().photos || []).filter(function(p) {
-      return !(p.url === photo.url && p.createdAt === photo.createdAt && p.uploadedBy === photo.uploadedBy);
-    });
-    await db.collection('locations').doc(lbLoc.id).update({ photos: fresh });
-
-    lbPhotos.splice(lbIndex, 1);
-
-    if (lbPhotos.length === 0) {
+    var remaining = lbLoc.photos.filter(function(p) { return p.url !== photo.url; });
+    if (remaining.length === 0) {
+      await db.collection('locations').doc(lbLoc.id).delete();
       closeLightbox();
       document.getElementById('viewer-overlay').classList.remove('open');
-    } else {
-      if (lbIndex >= lbPhotos.length) lbIndex = lbPhotos.length - 1;
-      renderLightbox(); // resets delete button state automatically
+      toast('Location removed.');
+      return;
     }
+    await db.collection('locations').doc(lbLoc.id).update({ photos: remaining });
+    lbLoc   = Object.assign({}, lbLoc, { photos: remaining });
+    lbPhotos= remaining;
+    if (lbIndex >= lbPhotos.length) lbIndex = lbPhotos.length - 1;
+    renderLightbox();
     toast('Photo deleted.');
   } catch(err) {
     console.error(err);
-    toast('Delete failed. Try again.');
-    delLabel.textContent = 'Delete';
-    delBtn.disabled      = false;
+    btn.textContent = 'Delete'; btn.disabled = false;
+    toast('Delete failed. Check Firestore rules.');
   }
 }

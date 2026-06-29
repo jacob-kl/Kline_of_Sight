@@ -25,39 +25,36 @@
   overflow-y: auto;
 }
 
-/* Event items — flat list, no extra indent.
-   Grouping is shown by the year header above, not by indentation. */
+/* "All trips" item + indented event items */
 .event-drop-item {
-  display: block; width: 100%;
-  padding: 10px 16px;
+  display: flex; align-items: center; width: 100%;
+  padding: 10px 16px 10px 24px;   /* indent under year header */
   text-align: left; background: none; border: none;
   font-size: 13px; font-weight: 500; font-family: var(--font);
   color: var(--text-muted); cursor: pointer;
   border-bottom: 1px solid #f8fafc;
   transition: background .12s, color .12s;
 }
+.event-drop-item:first-of-type { padding-left: 16px; } /* "All trips" row */
 .event-drop-item:hover  { background: #f8fafc; color: var(--text); }
 .event-drop-item.active { color: var(--text); font-weight: 700; background: #fffbeb; }
 .event-drop-item:last-child { border-bottom: none; }
 
 /* ── Year section header ─────────────────────────────────── */
-/* Visually distinct from items: darker background, bold, readable. */
 .event-drop-year-header {
   display: flex; align-items: center; justify-content: space-between;
-  width: 100%; padding: 7px 16px;
-  background: #f1f5f9;          /* clearly different from item background */
-  border: none;
-  border-top: 1px solid #e2e8f0;
-  font-size: 11px; font-weight: 800; font-family: var(--font);
-  color: var(--text);           /* dark, readable — not faint */
-  text-transform: uppercase; letter-spacing: .08em;
+  width: 100%; padding: 8px 14px;
+  background: var(--surface); border: none;
+  border-top: 1px solid var(--border); border-bottom: none;
+  font-size: 11px; font-weight: 700; font-family: var(--font);
+  color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em;
   cursor: pointer;
-  transition: background .12s;
+  transition: background .12s, color .12s;
 }
-.event-drop-year-header:hover { background: #e2e8f0; }
+.event-drop-year-header:hover { background: #f1f5f9; color: var(--text-muted); }
 
 .year-arrow {
-  font-size: 9px; color: var(--text-muted);
+  font-size: 9px; color: var(--text-faint);
   transition: transform .2s;
 }
 .event-drop-year-header.open .year-arrow { transform: rotate(90deg); }

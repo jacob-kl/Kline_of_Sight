@@ -33,3 +33,37 @@
   border-radius: 2px;
   margin: 14px auto 20px;
 }
+
+/* Delete button (events) */
+.btn-delete {
+  display: block; width: 100%; padding: 13px;
+  background: none; border: 1.5px solid #ef4444;
+  color: #ef4444; border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 600; font-family: var(--font);
+  cursor: pointer; transition: background .15s, color .15s;
+}
+.btn-delete:hover { background: #fef2f2; }
+
+/* Edit button inside event dropdown items */
+.drop-edit-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; padding: 2px 4px; margin-left: auto;
+  opacity: 0.4; transition: opacity .15s; flex-shrink: 0;
+}
+.event-drop-item:hover .drop-edit-btn { opacity: 1; }
+
+/* Rename input in viewer */
+.rename-input {
+  border: 1.5px solid var(--accent); border-radius: var(--radius-sm);
+  padding: 6px 10px; font-size: 16px; font-weight: 700;
+  font-family: var(--font); color: var(--text); outline: none;
+  width: 55%; margin-right: 6px;
+}
+
+/* Viewer icon buttons (rename, delete) */
+.vwr-icon-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; padding: 2px 4px; opacity: 0.5;
+  transition: opacity .15s;
+}
+.vwr-icon-btn:hover { opacity: 1; }

@@ -1,64 +1,112 @@
 // ─────────────────────────────────────────────────────────
-// Photo Viewer
+// Viewer — photo grid for a single location
 //
-// Shows a bottom-sheet grid of photos for a map location.
-// Displays event info if the location is tagged with one.
-// Tapping a photo opens the Lightbox.
-//
-// Reads:  currentUser, events (events.js)
-// Calls:  openLightbox (lightbox.js)
-//         openAddEventOverlay (events.js)
+// Reads:  db, currentUser, locations
+// Writes: currentLoc
 // ─────────────────────────────────────────────────────────
-
-function uploaderBadgeHTML(photo) {
-  if (photo.uploaderPhoto) {
-    return '<div class="uploader-badge"><img src="' + photo.uploaderPhoto +
-           '" title="' + (photo.uploaderName || '') + '"/></div>';
-  }
-  var initial = ((photo.uploaderName || '?')[0]).toUpperCase();
-  return '<div class="uploader-badge"><div class="uploader-initial">' + initial + '</div></div>';
-}
+let currentLoc = null;
 
 function openViewer(loc) {
-  if (typeof pinMode !== 'undefined' && pinMode) return;
-
-  // Track which location is open so "Add to Event" knows which doc to update
-  currentViewerLocId = loc.id;
-
-  // Event badge
-  var badge = document.getElementById('vwr-event-badge');
-  if (loc.eventName) {
-    badge.textContent = '📅 ' + loc.eventName + (loc.eventDate ? ' · ' + loc.eventDate : '');
-    badge.style.display = 'block';
-  } else {
-    badge.style.display = 'none';
-  }
-
-  document.getElementById('vwr-location').textContent = loc.name;
-  document.getElementById('vwr-title').textContent =
-    loc.photos.length + ' photo' + (loc.photos.length !== 1 ? 's' : '');
-
-  var grid = document.getElementById('vwr-grid');
-  grid.innerHTML = '';
-  loc.photos.forEach(function(ph, i) {
-    var el = document.createElement('div');
-    el.className = 'photo-grid-item';
-    el.innerHTML =
-      '<img src="' + ph.url + '" alt="' + (ph.caption || '') + '" loading="lazy"/>' +
-      (ph.caption ? '<div class="caption-overlay">' + ph.caption + '</div>' : '') +
-      uploaderBadgeHTML(ph);
-    (function(idx) { el.onclick = function() { openLightbox(loc, idx); }; })(i);
-    grid.appendChild(el);
-  });
-
-  // "Add to Event" button — always shown so you can tag or re-tag
-  var addEvtBtn = document.getElementById('vwr-add-event-btn');
-  addEvtBtn.textContent = loc.eventName ? '📅 Change event' : '📅 Add to event';
-
+  currentLoc = loc;
+  renderViewer(loc);
   document.getElementById('viewer-overlay').classList.add('open');
 }
 
 function maybeCloseViewer(e) {
-  if (e.target === document.getElementById('viewer-overlay'))
+  if (e.target === document.getElementById('viewer-overlay')) {
     document.getElementById('viewer-overlay').classList.remove('open');
+  }
+}
+
+// Swipe-down to close the viewer sheet
+(function() {
+  var ov = document.getElementById('viewer-overlay');
+  var sh = ov ? ov.querySelector('.sheet') : null;
+  if (!sh) return;
+  var sy = 0;
+  sh.addEventListener('touchstart', function(e) { sy = e.touches[0].clientY; }, { passive: true });
+  sh.addEventListener('touchend', function(e) {
+    if (sh.scrollTop > 0) return;
+    if (e.changedTouches[0].clientY - sy > 80)
+      ov.classList.remove('open');
+  }, { passive: true });
+})();
+
+// ── Render ────────────────────────────────────────────────
+function renderViewer(loc) {
+  // Location name with rename button
+  var nameEl = document.getElementById('vwr-location');
+  nameEl.innerHTML =
+    '<span id="vwr-name-text">' + escHtml(loc.name) + '</span>' +
+    (currentUser && loc.ownedBy === currentUser.uid
+      ? ' <button class="vwr-icon-btn" title="Rename" onclick="startRenameLocation()">✏️</button>' +
+        ' <button class="vwr-icon-btn" title="Delete location" onclick="deleteLocation()">🗑️</button>'
+      : '');
+
+  // Event badge
+  var evtEl = document.getElementById('vwr-event');
+  evtEl.innerHTML = loc.eventName
+    ? '<span class="vwr-event-badge">📅 ' + escHtml(loc.eventName) + '</span>' +
+      (currentUser ? ' <button class="vwr-icon-btn" onclick="openAddEventOverlay(\'' + loc.id + '\')">✏️</button>' : '')
+    : (currentUser ? '<button class="btn-outline-sm" onclick="openAddEventOverlay(\'' + loc.id + '\')">+ Add to event</button>' : '');
+
+  // Photo grid
+  var grid = document.getElementById('vwr-grid');
+  grid.innerHTML = '';
+  (loc.photos || []).forEach(function(ph, i) {
+    var div = document.createElement('div');
+    div.className = 'vwr-thumb';
+    var img = document.createElement('img');
+    img.src     = ph.url;
+    img.loading = 'lazy';
+    img.onclick = function() { openLightbox(loc.photos, i, loc); };
+    div.appendChild(img);
+    grid.appendChild(div);
+  });
+}
+
+// ── Rename location ───────────────────────────────────────
+function startRenameLocation() {
+  var nameEl = document.getElementById('vwr-location');
+  var current = currentLoc.name;
+  nameEl.innerHTML =
+    '<input id="rename-input" class="rename-input" value="' + escHtml(current) + '" maxlength="80"/>' +
+    ' <button class="btn-outline-sm" onclick="saveRenameLocation()">Save</button>' +
+    ' <button class="btn-outline-sm" onclick="renderViewer(currentLoc)">Cancel</button>';
+  var inp = document.getElementById('rename-input');
+  inp.focus(); inp.select();
+  inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') saveRenameLocation();
+    if (e.key === 'Escape') renderViewer(currentLoc);
+  });
+}
+
+async function saveRenameLocation() {
+  var inp  = document.getElementById('rename-input');
+  var name = (inp ? inp.value : '').trim();
+  if (!name) return;
+  try {
+    await db.collection('locations').doc(currentLoc.id).update({ name: name });
+    currentLoc = Object.assign({}, currentLoc, { name: name });
+    renderViewer(currentLoc);
+    toast('Location renamed.');
+  } catch(err) {
+    console.error(err); toast('Rename failed.');
+  }
+}
+
+// ── Delete location ───────────────────────────────────────
+async function deleteLocation() {
+  if (!confirm('Delete "' + currentLoc.name + '" and all its photos? This cannot be undone.')) return;
+  try {
+    await db.collection('locations').doc(currentLoc.id).delete();
+    document.getElementById('viewer-overlay').classList.remove('open');
+    toast('Location deleted.');
+  } catch(err) {
+    console.error(err); toast('Delete failed. Check Firestore rules.');
+  }
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

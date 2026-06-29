@@ -165,3 +165,37 @@ document.addEventListener('keydown', function(e) {
   if (typeof pinMode !== 'undefined' && pinMode) cancelPin();
   else document.getElementById('upload-overlay').classList.remove('open');
 });
+
+// ── Swipe-to-close for bottom sheets ─────────────────────
+// Call once on load for each overlay that has a .sheet inside.
+// Swiping down ≥ 80px closes the sheet (ignored if scrolled down).
+function addSwipeToClose(overlayId, closeFn) {
+  var overlay = document.getElementById(overlayId);
+  if (!overlay) return;
+  var sheet = overlay.querySelector('.sheet');
+  if (!sheet) return;
+  var startY = 0;
+  sheet.addEventListener('touchstart', function(e) {
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  sheet.addEventListener('touchend', function(e) {
+    if (sheet.scrollTop > 10) return; // don't close when scrolled
+    if (e.changedTouches[0].clientY - startY > 80) closeFn();
+  }, { passive: true });
+}
+
+window.addEventListener('load', function() {
+  addSwipeToClose('upload-overlay',    function() {
+    document.getElementById('upload-overlay').classList.remove('open');
+    if (typeof resetUpload === 'function') resetUpload();
+  });
+  addSwipeToClose('sharing-overlay',   function() {
+    document.getElementById('sharing-overlay').classList.remove('open');
+  });
+  addSwipeToClose('add-event-overlay', function() {
+    document.getElementById('add-event-overlay').classList.remove('open');
+  });
+  addSwipeToClose('edit-event-overlay', function() {
+    document.getElementById('edit-event-overlay').classList.remove('open');
+  });
+});
