@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────
 // Kline of Sight — Service Worker
-// Strategy: cache-first for app shell, network-only for
-// Firebase / Cloudinary / Mapbox API calls.
+// Bump CACHE version with each deploy so "Update available"
+// banner appears automatically for existing users.
 // ─────────────────────────────────────────────────────────
-const CACHE = 'kos-v1';
+const CACHE = 'kos-v2';   // ← increment this on each deploy
 
 const SHELL = [
   '/',
@@ -28,18 +28,24 @@ const SHELL = [
   '/icon-512.png',
 ];
 
-// Domains that must always go to network (live data)
-const NETWORK_ONLY = [
+const BYPASS = [
   'firestore.googleapis.com',
   'firebase.googleapis.com',
   'identitytoolkit.googleapis.com',
   'cloudinary.com',
+  'maplibre',
+  'globe.gl',
+  'arcgisonline.com',
+  'cartocdn.com',
+  'unpkg.com',
   '/api/config',
 ];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
-  self.skipWaiting();
+  // Don't skipWaiting here — we want the "update available" banner
+  // so the user can decide when to reload. skipWaiting is triggered
+  // by the main thread when the user clicks "Refresh".
 });
 
 self.addEventListener('activate', e => {
@@ -53,18 +59,20 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  const url = e.request.url;
-  if (NETWORK_ONLY.some(s => url.includes(s))) return; // bypass cache
-
+  if (BYPASS.some(s => e.request.url.includes(s))) return;
   e.respondWith(
     caches.match(e.request).then(cached => {
       const fresh = fetch(e.request).then(res => {
-        if (res && res.status === 200 && res.type === 'basic') {
+        if (res && res.status === 200 && res.type === 'basic')
           caches.open(CACHE).then(c => c.put(e.request, res.clone()));
-        }
         return res;
-      }).catch(() => cached); // offline fallback
+      }).catch(() => cached);
       return cached || fresh;
     })
   );
+});
+
+// Main thread sends 'SKIP_WAITING' when user clicks the update banner
+self.addEventListener('message', e => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });

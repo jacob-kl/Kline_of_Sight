@@ -400,10 +400,42 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js')
-          .then(function(r) { console.log('SW registered:', r.scope); })
-          .catch(function(e) { console.warn('SW failed:', e); });
+        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+
+          // Detect when a new SW has finished installing and is waiting
+          reg.addEventListener('updatefound', function() {
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function() {
+              // 'installed' + existing controller = update ready
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                document.getElementById('update-banner').classList.add('show');
+              }
+            });
+          });
+
+          // Also check: if a waiting SW already exists (e.g. user opened two tabs)
+          if (reg.waiting && navigator.serviceWorker.controller) {
+            document.getElementById('update-banner').classList.add('show');
+          }
+
+        }).catch(function(e) { console.warn('SW failed:', e); });
+
+        // When the new SW takes control, reload to use the fresh files
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          window.location.reload();
+        });
       });
+    }
+
+    function applyUpdate() {
+      document.getElementById('update-banner').classList.remove('show');
+      navigator.serviceWorker.getRegistration().then(function(reg) {
+        if (reg && reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+      });
+    }
+
+    function dismissUpdate() {
+      document.getElementById('update-banner').classList.remove('show');
     }
   </script>
 
@@ -412,6 +444,13 @@
     <span class="install-text">📱 Add to your home screen</span>
     <button class="install-btn" onclick="installApp()">Install</button>
     <button class="install-close" onclick="dismissInstallBanner()" aria-label="Dismiss">✕</button>
+  </div>
+
+  <!-- ── Update available banner ──────────────────────── -->
+  <div id="update-banner" class="update-banner">
+    <span class="update-text">✨ Update available</span>
+    <button class="update-btn" onclick="applyUpdate()">Refresh</button>
+    <button class="update-close" onclick="dismissUpdate()" aria-label="Later">✕</button>
   </div>
 </body>
 </html>

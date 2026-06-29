@@ -134,6 +134,15 @@ function initGlobe() {
     if (!globeActive || !globeInstance) return;
     var pov = globeInstance.pointOfView();
     if (!pov) return;
+
+    // Pre-warm: when getting close (alt < 1.0) start positioning MapLibre
+    // at the predicted landing view so tiles begin loading in the background.
+    // By the time the user actually hits the 0.60 threshold, tiles are cached.
+    if (pov.altitude < 1.0 && pov.altitude >= 0.60) {
+      setTileStyle('satellite');
+      maplibreMap.jumpTo({ center: [pov.lng, pov.lat], zoom: altToZoom(pov.altitude) });
+    }
+
     if (pov.altitude < 0.60) {
       if (!zoomTimer) zoomTimer = setTimeout(function() {
         zoomTimer = null;
@@ -182,18 +191,19 @@ function enterFlatMap(lat, lng, globeAlt) {
   globeActive = false;
 
   var zoom = globeAlt ? altToZoom(globeAlt) : 6;
-
-  // Switch to satellite FIRST — matches the globe imagery so the cross-fade
-  // looks like zooming into the same satellite view, not a style change.
   setTileStyle('satellite');
   maplibreMap.resize();
   if (lat !== undefined) maplibreMap.jumpTo({ center: [lng, lat], zoom: zoom });
 
-  // Small delay lets MapLibre render satellite tiles before the globe
-  // starts fading. Without this the map underneath is blank mid-fade.
-  setTimeout(function() {
+  // Wait for MapLibre to finish rendering tiles before fading the globe out.
+  // 'idle' fires when all tiles are loaded. 400ms is the max we'll wait so
+  // the transition doesn't feel slow even on poor connections.
+  var fadeTimer = setTimeout(doFade, 400);
+  maplibreMap.once('idle', function() { clearTimeout(fadeTimer); doFade(); });
+
+  function doFade() {
     document.getElementById('globe-container').classList.add('flat-mode');
-  }, 80);
+  }
 
   document.querySelectorAll('.ms-btn').forEach(function(b) {
     b.classList.toggle('active', b.dataset.style === 'satellite');
