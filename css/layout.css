@@ -542,7 +542,7 @@
 }
 
 /* Make header relative so dropdown positions correctly */
-.app-header { position: relative; }
+
 
 .app-menu-item {
   display: flex; align-items: center; gap: 10px;
