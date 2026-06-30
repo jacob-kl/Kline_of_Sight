@@ -117,31 +117,21 @@ function initGlobe() {
       el.title = d.name;
       return el;
     })
-
-    // CLICK DETECTION via globe.gl's native points layer. This is the
-    // library's primary, documented interaction API — it raycasts
-    // against actual WebGL geometry on the canvas itself, so clicks are
-    // handled the same reliable way as dragging-to-rotate is, with no
-    // DOM-overlay-vs-canvas hit-testing issues. Made invisible
-    // (transparent) since the HTML layer above provides the visuals;
-    // this layer exists purely to catch taps.
-    .pointsData([])
-    .pointLat(function(d){return d.lat;})
-    .pointLng(function(d){return d.lng;})
-    .pointAltitude(0.012)
-    .pointRadius(0.45)               // generous tap target
-    .pointColor(function(){return 'rgba(0,0,0,0.001)';}) // effectively invisible, not fully 0 (some renderers cull alpha:0 from raycasting)
-    .onPointClick(function(d) {
-      enterFlatMap(d.lat, d.lng, 0.12);
-      setTimeout(function() {
-        var loc = locations.find(function(l){ return Math.abs(l.lat-d.lat)<0.001 && Math.abs(l.lng-d.lng)<0.001; });
-        if (loc) openViewer(loc);
-      }, 600);
-    })
-    .onPointHover(function(d) {
-      container.style.cursor = d ? 'pointer' : 'grab';
-    })
     (container);
+
+  // ── Click detection via onGlobeClick ──────────────────────
+  // pointsData/onPointClick (tried earlier) raycasts against individual
+  // 3D point objects — when two points are close together (e.g. SLC and
+  // Ogden, ~35mi apart) their hit geometries can overlap and confuse
+  // three.js's raycaster, causing clicks near either one to register
+  // nothing. onGlobeClick avoids that entirely: it raycasts against the
+  // globe SPHERE itself (one large, continuous, always-present surface)
+  // and just gives us the lat/lng of wherever was tapped. From there we
+  // do plain JS distance math against our own location list — no 3D
+  // object picking precision issues possible.
+  globeInstance.onGlobeClick(function(coords) {
+    handleGlobeClick(coords.lat, coords.lng);
+  });
 
   globeInstance.pointOfView({lat:25, lng:-30, altitude:2});
   globeInstance.controls().autoRotate      = true;
@@ -184,8 +174,53 @@ function updateGlobeMarkers() {
   var data = (locations||[]).map(function(loc){
     return {lat:loc.lat, lng:loc.lng, name:loc.name};
   });
-  globeInstance.htmlElementsData(data); // visual pins
-  globeInstance.pointsData(data);       // click targets (see initGlobe)
+  globeInstance.htmlElementsData(data); // visual pins only — see handleGlobeClick for taps
+}
+
+// ── Globe tap → zoom to nearby area ───────────────────────
+// Finds every location within NEARBY_RADIUS_KM of the tapped point and
+// zooms in to show that whole area — works correctly whether there's
+// one pin, several spread-out pins (SLC + Ogden), or several pins at the
+// exact same coordinates (two ABQ events). Doesn't require landing
+// precisely on a pin; tapping anywhere near a cluster of pins is enough.
+var NEARBY_RADIUS_KM = 200;
+
+function altitudeForSpanKm(spanKm) {
+  if (spanKm < 5)   return 0.12;  // single pin / same spot
+  if (spanKm < 50)  return 0.25;  // a city and its suburbs
+  if (spanKm < 150) return 0.45;  // e.g. Salt Lake City ↔ Ogden (~35mi)
+  if (spanKm < 400) return 0.80;  // state-sized spread
+  return 1.30;                    // regional
+}
+
+function handleGlobeClick(lat, lng) {
+  var nearby = (locations||[]).filter(function(l) {
+    return haversineDistance([lat,lng], [l.lat,l.lng]) / 1000 <= NEARBY_RADIUS_KM;
+  });
+  if (!nearby.length) return; // tapped open ocean / empty area — do nothing
+
+  var lats = nearby.map(function(l){return l.lat;});
+  var lngs = nearby.map(function(l){return l.lng;});
+  var centerLat = lats.reduce(function(a,b){return a+b;},0) / lats.length;
+  var centerLng = lngs.reduce(function(a,b){return a+b;},0) / lngs.length;
+
+  var spanKm = Math.max.apply(null, lats) - Math.min.apply(null, lats) > 0 ||
+               Math.max.apply(null, lngs) - Math.min.apply(null, lngs) > 0
+    ? haversineDistance(
+        [Math.min.apply(null,lats), Math.min.apply(null,lngs)],
+        [Math.max.apply(null,lats), Math.max.apply(null,lngs)]
+      ) / 1000
+    : 0;
+
+  enterFlatMap(centerLat, centerLng, altitudeForSpanKm(spanKm));
+
+  // Only auto-open the photo viewer when there's exactly one location
+  // nearby — with multiple, just land zoomed into the area so the user
+  // can tap whichever pin they meant (handled by the flat-map's own
+  // cluster/picker logic once they tap there).
+  if (nearby.length === 1) {
+    setTimeout(function() { openViewer(nearby[0]); }, 600);
+  }
 }
 
 // ── View switching ────────────────────────────────────────
@@ -368,8 +403,10 @@ function renderMarkers() {
           return;
         }
 
+        // Raised maxZoom from 12→14 for extra margin on close-but-distinct
+        // pairs like SLC/Ogden (~35mi apart) — ensures they fully separate.
         maplibreMap.fitBounds([[Math.min.apply(null,lngs),Math.min.apply(null,lats)],
-          [Math.max.apply(null,lngs),Math.max.apply(null,lats)]],{padding:80,maxZoom:12,duration:700});
+          [Math.max.apply(null,lngs),Math.max.apply(null,lats)]],{padding:90,maxZoom:14,duration:700});
       };})(group);
     }
     el.style.cursor='pointer';
