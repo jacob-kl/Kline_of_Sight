@@ -3,7 +3,7 @@
 // Bump CACHE version with each deploy so "Update available"
 // banner appears automatically for existing users.
 // ─────────────────────────────────────────────────────────
-const CACHE = 'kos-v5';   // ← increment this on each deploy
+const CACHE = 'kos-v6';   // ← increment this on each deploy
 
 const SHELL = [
   '/',

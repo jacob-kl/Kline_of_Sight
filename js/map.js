@@ -96,81 +96,52 @@ function initGlobe() {
     .atmosphereAltitude(0.18)
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+
+    // VISUAL pin markers only — no click handlers live here. HTML
+    // overlays on top of a draggable WebGL canvas are notoriously
+    // unreliable for click/tap detection across browsers (OrbitControls'
+    // touchmove preventDefault can cancel the synthetic click the browser
+    // would otherwise fire). So this layer is purely decorative now.
     .htmlElementsData([])
     .htmlLat(function(d){return d.lat;})
     .htmlLng(function(d){return d.lng;})
     .htmlAltitude(0.01)
     .htmlElement(function(d) {
-      // Outer hit-target is much larger than the visible pin (44x52px,
-      // centered on the pin tip) — small touch targets are the #1 reason
-      // taps miss on mobile. The SVG itself stays visually small.
       var el = document.createElement('div');
-      el.style.cssText =
-        'cursor:pointer; transform:translate(-50%,-100%); ' +
-        'width:44px; height:52px; display:flex; align-items:flex-end; justify-content:center; ' +
-        'touch-action:none;'; // touch-action:none stops the browser from ever
-                              // interpreting a touch on this element as a
-                              // page-scroll/pan gesture, which is what was
-                              // silently eating taps before they could
-                              // register as a click on mobile.
+      el.style.cssText = 'transform:translate(-50%,-100%); pointer-events:none;';
       el.innerHTML =
         '<svg width="22" height="30" viewBox="0 0 22 30" xmlns="http://www.w3.org/2000/svg" ' +
-        'style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));pointer-events:none">' +
+        'style="filter:drop-shadow(0 2px 4px rgba(0,0,0,.55))">' +
         '<path d="M11 0C4.93 0 0 4.93 0 11c0 8.25 11 19 11 19S22 19.25 22 11C22 4.93 17.07 0 11 0z" fill="#ef4444"/>' +
         '<circle cx="11" cy="11" r="4.5" fill="white"/></svg>';
       el.title = d.name;
-
-      // Manual tap detection instead of relying on the browser's synthetic
-      // 'click' event. On a draggable 3D scene, OrbitControls calls
-      // preventDefault() on touchmove globally to stop page-scroll while
-      // rotating — and once ANY preventDefault happens during a touch
-      // sequence, some mobile browsers cancel the synthetic click they'd
-      // normally fire on touchend, even for an unrelated element. Tracking
-      // pointerdown→pointerup ourselves sidesteps that entirely.
-      var tapStart = null;
-
-      function onPointerDown(e) {
-        e.stopPropagation();
-        tapStart = { x: e.clientX, y: e.clientY, t: Date.now() };
-      }
-      function onPointerUp(e) {
-        e.stopPropagation();
-        if (!tapStart) return;
-        var dx = e.clientX - tapStart.x, dy = e.clientY - tapStart.y;
-        var moved   = Math.hypot(dx, dy);
-        var elapsed = Date.now() - tapStart.t;
-        tapStart = null;
-        // Treat as a tap only if it didn't move much and wasn't a long-press
-        if (moved < 10 && elapsed < 600) handleTap();
-      }
-
-      el.addEventListener('pointerdown', onPointerDown);
-      el.addEventListener('pointerup',   onPointerUp);
-      // Fallback for browsers/devices without full Pointer Events support
-      el.addEventListener('touchstart', function(e){ e.stopPropagation(); var t=e.touches[0]; tapStart={x:t.clientX,y:t.clientY,t:Date.now()}; }, {passive:true});
-      el.addEventListener('touchend',   function(e){
-        e.stopPropagation();
-        if (!tapStart) return;
-        var t = e.changedTouches[0];
-        var moved = Math.hypot(t.clientX-tapStart.x, t.clientY-tapStart.y);
-        var elapsed = Date.now()-tapStart.t;
-        tapStart = null;
-        if (moved < 10 && elapsed < 600) handleTap();
-      }, {passive:true});
-
-      function handleTap() {
-        // Always zoom in close (fixed altitude), not whatever the current
-        // globe zoom happens to be — tapping a pin should feel like a
-        // deliberate "go there" action, not a relative zoom.
-        enterFlatMap(d.lat, d.lng, 0.12);
-        setTimeout(function() {
-          var loc = locations.find(function(l){ return Math.abs(l.lat-d.lat)<0.001&&Math.abs(l.lng-d.lng)<0.001; });
-          if (loc) openViewer(loc);
-        }, 600);
-      }
-
       return el;
-    })(container);
+    })
+
+    // CLICK DETECTION via globe.gl's native points layer. This is the
+    // library's primary, documented interaction API — it raycasts
+    // against actual WebGL geometry on the canvas itself, so clicks are
+    // handled the same reliable way as dragging-to-rotate is, with no
+    // DOM-overlay-vs-canvas hit-testing issues. Made invisible
+    // (transparent) since the HTML layer above provides the visuals;
+    // this layer exists purely to catch taps.
+    .pointsData([])
+    .pointLat(function(d){return d.lat;})
+    .pointLng(function(d){return d.lng;})
+    .pointAltitude(0.012)
+    .pointRadius(0.45)               // generous tap target
+    .pointColor(function(){return 'rgba(0,0,0,0.001)';}) // effectively invisible, not fully 0 (some renderers cull alpha:0 from raycasting)
+    .onPointClick(function(d) {
+      enterFlatMap(d.lat, d.lng, 0.12);
+      setTimeout(function() {
+        var loc = locations.find(function(l){ return Math.abs(l.lat-d.lat)<0.001 && Math.abs(l.lng-d.lng)<0.001; });
+        if (loc) openViewer(loc);
+      }, 600);
+    })
+    .onPointHover(function(d) {
+      container.style.cursor = d ? 'pointer' : 'grab';
+    })
+    (container);
 
   globeInstance.pointOfView({lat:25, lng:-30, altitude:2});
   globeInstance.controls().autoRotate      = true;
@@ -210,9 +181,11 @@ function initGlobe() {
 
 function updateGlobeMarkers() {
   if (!globeInstance) return;
-  globeInstance.htmlElementsData((locations||[]).map(function(loc){
+  var data = (locations||[]).map(function(loc){
     return {lat:loc.lat, lng:loc.lng, name:loc.name};
-  }));
+  });
+  globeInstance.htmlElementsData(data); // visual pins
+  globeInstance.pointsData(data);       // click targets (see initGlobe)
 }
 
 // ── View switching ────────────────────────────────────────
