@@ -563,3 +563,9 @@
 .app-menu-update:hover { background: #dbeafe; }
 
 .menu-icon { font-size: 16px; flex-shrink: 0; }
+
+/* Uploader pills wrapper — display:contents makes its children act as
+   direct flex items of .filter-row, preserving the original gap/alignment
+   while letting JS clear/rebuild just this part without touching siblings
+   (like .event-filter-wrap) that live in the same row. */
+.uploader-filter-wrap { display: contents; }

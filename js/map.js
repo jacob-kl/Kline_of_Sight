@@ -108,8 +108,16 @@ function initGlobe() {
         '<path d="M11 0C4.93 0 0 4.93 0 11c0 8.25 11 19 11 19S22 19.25 22 11C22 4.93 17.07 0 11 0z" fill="#ef4444"/>' +
         '<circle cx="11" cy="11" r="4.5" fill="white"/></svg>';
       el.title = d.name;
+      // Stop pointerdown from reaching OrbitControls — without this, tapping
+      // a pin can be interpreted as the start of a drag-to-rotate gesture,
+      // which swallows the click before it ever fires. This is the standard
+      // fix for HTML markers over a draggable three.js globe.
+      el.addEventListener('pointerdown', function(e) { e.stopPropagation(); }, { passive: true });
+      el.addEventListener('touchstart',  function(e) { e.stopPropagation(); }, { passive: true });
+
       el.addEventListener('click', function(e) {
         e.stopPropagation();
+        e.preventDefault();
         // Always zoom in close (fixed altitude), not whatever the current
         // globe zoom happens to be — clicking a pin should feel like a
         // deliberate "go there" action, not a relative zoom.
@@ -362,7 +370,11 @@ function renderMarkers() {
 
 maplibreMap.on('zoomend',function(){
   var z=Math.floor(maplibreMap.getZoom());
-  if (Math.abs(z-lastRenderZoom)>=1){lastRenderZoom=z;renderMarkers();}
+  if (Math.abs(z-lastRenderZoom)>=1){
+    lastRenderZoom=z;
+    renderMarkers();
+    if (typeof renderEventFilter === 'function') renderEventFilter();
+  }
 });
 
 // ── Uploader filter bar ───────────────────────────────────
@@ -376,18 +388,46 @@ function buildUploaderMap(){
   }); return up;
 }
 function renderFilter(){
-  allUploaders=buildUploaderMap();
-  var row=document.getElementById('filter-row');
-  if(allUploaders.size<2){row.style.display='none';return;}
-  row.style.display='flex'; row.innerHTML='<span class="filter-row-label">Show</span>';
-  allUploaders.forEach(function(u,uid){
-    var active=selectedUids.size===0||selectedUids.has(uid);
-    var btn=document.createElement('button');
-    btn.className='filter-btn'+(active?'':' inactive'); btn.title=u.displayName;
-    btn.onclick=function(){toggleFilter(uid);};
-    btn.innerHTML=u.photoURL?'<img src="'+u.photoURL+'" alt="'+u.displayName+'"/>':'<div class="filter-initial">'+((u.displayName[0]||'?').toUpperCase())+'</div>';
-    row.appendChild(btn);
-  });
+  allUploaders = buildUploaderMap();
+  var row = document.getElementById('filter-row');
+  if (!row) return;
+
+  // IMPORTANT: only touch the uploader-pills wrapper, never row.innerHTML —
+  // wiping the whole row also destroys the trip dropdown that
+  // renderEventFilter() appends as a sibling. This was the bug that made
+  // "select a trip" disappear after any zoom (zoomend → renderMarkers →
+  // renderFilter → row.innerHTML wipe).
+  var existing = row.querySelector('.uploader-filter-wrap');
+  if (existing) existing.remove();
+
+  if (allUploaders.size >= 2) {
+    var wrap = document.createElement('div');
+    wrap.className = 'uploader-filter-wrap';
+    wrap.innerHTML = '<span class="filter-row-label">Show</span>';
+    allUploaders.forEach(function(u, uid) {
+      var active = selectedUids.size === 0 || selectedUids.has(uid);
+      var btn = document.createElement('button');
+      btn.className = 'filter-btn' + (active ? '' : ' inactive');
+      btn.title = u.displayName;
+      btn.onclick = function() { toggleFilter(uid); };
+      btn.innerHTML = u.photoURL
+        ? '<img src="'+u.photoURL+'" alt="'+u.displayName+'"/>'
+        : '<div class="filter-initial">'+((u.displayName[0]||'?').toUpperCase())+'</div>';
+      wrap.appendChild(btn);
+    });
+    row.insertBefore(wrap, row.firstChild);
+  }
+
+  updateFilterRowVisibility();
+}
+
+// Row is visible if EITHER the uploader pills OR the trip dropdown has content.
+// Called by both renderFilter() and renderEventFilter() so neither one can
+// hide content the other one added.
+function updateFilterRowVisibility() {
+  var row = document.getElementById('filter-row');
+  if (!row) return;
+  row.style.display = row.children.length ? 'flex' : 'none';
 }
 function toggleFilter(uid){
   if(selectedUids.size===0) selectedUids=new Set([uid]);

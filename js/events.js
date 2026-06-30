@@ -122,25 +122,35 @@ function isValidDate(d) {
 
 // ── Map event filter dropdown ─────────────────────────────
 function renderEventFilter() {
-  var row=document.getElementById('filter-row'); if(!row) return;
-  var old=row.querySelector('.event-filter-wrap'); if(old) old.remove();
-  var seen=new Map();
+  var row = document.getElementById('filter-row'); if (!row) return;
+
+  // Only touch our own wrapper — never row.innerHTML/display directly,
+  // so we don't clobber the uploader pills renderFilter() adds.
+  var oldWrap = row.querySelector('.event-filter-wrap');
+  if (oldWrap) oldWrap.remove();
+
+  var seen = new Map();
   (locations||[]).forEach(function(loc){
-    if(loc.eventId&&loc.eventName&&!seen.has(loc.eventId)){
-      var priv=(events||[]).some(function(e){return e.id===loc.eventId&&e.private;});
-      seen.set(loc.eventId,{id:loc.eventId,name:loc.eventName,date:loc.eventDate||'',private:priv});
+    if (loc.eventId && loc.eventName && !seen.has(loc.eventId)) {
+      var priv = (events||[]).some(function(e){ return e.id===loc.eventId && e.private; });
+      seen.set(loc.eventId, { id:loc.eventId, name:loc.eventName, date:loc.eventDate||'', private:priv });
     }
   });
-  if(!seen.size) return;
-  _dropdownEventsMap=seen;
-  var label=selectedEventFilter&&seen.has(selectedEventFilter)?seen.get(selectedEventFilter).name:'All trips';
-  var wrap=document.createElement('div'); wrap.className='event-filter-wrap';
-  var btn=document.createElement('button');
-  btn.className='event-filter-pill'+(selectedEventFilter?' active':'');
-  btn.textContent='📅 '+label+' ▾';
-  btn.onclick=function(e){e.stopPropagation();buildEventDropdown(_dropdownEventsMap,btn);};
-  wrap.appendChild(btn); row.appendChild(wrap);
-  if(row.style.display==='none') row.style.display='flex';
+
+  if (seen.size) {
+    _dropdownEventsMap = seen;
+    var label = selectedEventFilter && seen.has(selectedEventFilter) ? seen.get(selectedEventFilter).name : 'All trips';
+    var wrap = document.createElement('div'); wrap.className = 'event-filter-wrap';
+    var btn  = document.createElement('button');
+    btn.className   = 'event-filter-pill' + (selectedEventFilter ? ' active' : '');
+    btn.textContent = '📅 ' + label + ' ▾';
+    btn.onclick = function(e) { e.stopPropagation(); buildEventDropdown(_dropdownEventsMap, btn); };
+    wrap.appendChild(btn);
+    row.appendChild(wrap);
+  }
+
+  // Recompute visibility based on BOTH wrappers, every time either one runs.
+  if (typeof updateFilterRowVisibility === 'function') updateFilterRowVisibility();
 }
 
 function buildEventDropdown(eventsMap,anchorBtn) {
